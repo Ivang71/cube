@@ -1,0 +1,50 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": "x64"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "inherits": ["base"]
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "inherits": ["base"]
+    },
+    {
+      "name": "profile",
+      "displayName": "Profile",
+      "inherits": ["base"]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release"
+    },
+    {
+      "name": "profile",
+      "configurePreset": "profile",
+      "configuration": "RelWithDebInfo"
+    }
+  ]
+}
+
