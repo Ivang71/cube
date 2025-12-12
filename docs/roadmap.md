@@ -82,7 +82,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 
 ## Stage 2: Rendering Foundation
 
-### 2.1 Shader Pipeline
+### 2.1 Shader Pipeline ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.1.1 | Create shaders/ directory structure | Directory exists |
@@ -94,7 +94,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.1.7 | Implement shader hot-reload detection | File change detected |
 | 2.1.8 | Implement shader hot-reload swap | Shader updates without restart |
 
-### 2.2 Render Pass
+### 2.2 Render Pass ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.2.1 | Create depth format query | Supported depth format found |
@@ -106,7 +106,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.2.7 | Create framebuffers per swapchain image | Framebuffers created |
 | 2.2.8 | Recreate on resize | Resize works |
 
-### 2.3 Graphics Pipeline
+### 2.3 Graphics Pipeline ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.3.1 | Define vertex input state (empty for now) | State struct filled |
@@ -120,7 +120,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.3.9 | Create VkPipeline | Pipeline created |
 | 2.3.10 | Enable pipeline cache | Cache created and used |
 
-### 2.4 Draw Triangle
+### 2.4 Draw Triangle ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.4.1 | Hardcode triangle vertices in shader | Vertices in shader |
@@ -131,7 +131,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.4.6 | End render pass | Render pass ends |
 | 2.4.7 | Submit and present | **Triangle visible on screen** |
 
-### 2.5 Vertex Buffers
+### 2.5 Vertex Buffers ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.5.1 | Add VMA (Vulkan Memory Allocator) | VMA links and initializes |
@@ -164,7 +164,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.7.8 | Bind descriptor set in draw | Set bound |
 | 2.7.9 | Update MVP each frame | **Rotating triangle** |
 
-### 2.8 Camera
+### 2.8 Camera ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.8.1 | Implement perspective projection | Matrix correct (test against known) |

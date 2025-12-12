@@ -68,7 +68,7 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    // Depth stencil
+    // Depth stencil - temporarily disable
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depth_stencil.depthTestEnable = VK_FALSE;
@@ -99,13 +99,16 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
     dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
     dynamic_state.pDynamicStates = dynamic_states.data();
 
-    // Pipeline layout
+    // Pipeline layout with push constants
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(UniformBufferObject);
+
     VkPipelineLayoutCreateInfo layout_ci{};
     layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    if (descriptor_set_layout != VK_NULL_HANDLE) {
-        layout_ci.setLayoutCount = 1;
-        layout_ci.pSetLayouts = &descriptor_set_layout;
-    }
+    layout_ci.pushConstantRangeCount = 1;
+    layout_ci.pPushConstantRanges = &pushConstantRange;
 
     if (vkCreatePipelineLayout(device, &layout_ci, nullptr, &layout) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline layout" << std::endl;

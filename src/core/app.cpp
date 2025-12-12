@@ -35,6 +35,11 @@ bool App::init_window() {
     glfwSetWindowSizeCallback(window, [](GLFWwindow* win, int, int) {
         static_cast<App*>(glfwGetWindowUserPointer(win))->framebuffer_resized = true;
     });
+    glfwSetKeyCallback(window, key_callback);
+    glfwSetCursorPosCallback(window, cursor_pos_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    camera.mouse_captured = true;
+    glfwFocusWindow(window); // Ensure window has focus for input
     return true;
 }
 
@@ -229,90 +234,10 @@ bool App::init_vulkan() {
     // Clean up index staging buffer
     vmaDestroyBuffer(allocator, indexStagingBuffer, indexStagingBufferAllocation);
 
-    // Create uniform buffer
-    VkDeviceSize uniformBufferSize = sizeof(UniformBufferObject);
+    // Using push constants instead of UBO
 
-    VkBufferCreateInfo uniformBufferInfo{};
-    uniformBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    uniformBufferInfo.size = uniformBufferSize;
-    uniformBufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    uniformBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VmaAllocationCreateInfo uniformAllocInfo = {};
-    uniformAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    uniformAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-
-    if (vmaCreateBuffer(allocator, &uniformBufferInfo, &uniformAllocInfo, &uniformBuffer, &uniformBufferAllocation, nullptr) != VK_SUCCESS) {
-        std::cerr << "Failed to create uniform buffer" << std::endl;
-        return false;
-    }
-
-    // Create descriptor set layout
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
-
-    if (vkCreateDescriptorSetLayout(device.handle(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-        std::cerr << "Failed to create descriptor set layout" << std::endl;
-        return false;
-    }
-
-    // Create descriptor pool
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = 1;
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = 1;
-
-    if (vkCreateDescriptorPool(device.handle(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-        std::cerr << "Failed to create descriptor pool" << std::endl;
-        return false;
-    }
-
-    // Allocate descriptor set
-    VkDescriptorSetLayout layouts[] = {descriptorSetLayout};
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = layouts;
-
-    if (vkAllocateDescriptorSets(device.handle(), &allocInfo, &descriptorSet) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate descriptor set" << std::endl;
-        return false;
-    }
-
-    // Update descriptor set
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = uniformBuffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = sizeof(UniformBufferObject);
-
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSet;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pBufferInfo = &bufferInfo;
-
-    vkUpdateDescriptorSets(device.handle(), 1, &descriptorWrite, 0, nullptr);
-
-    // Create pipeline with descriptor set layout
-    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptorSetLayout)) return false;
+    // Create pipeline with push constants
+    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent)) return false;
 
     return true;
 }
@@ -341,12 +266,21 @@ bool App::recreate_swapchain() {
 void App::main_loop() {
     double fps_timer = glfwGetTime();
     int fps_frames = 0;
+    double last_time = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
+        double current_time = glfwGetTime();
+        float delta_time = static_cast<float>(current_time - last_time);
+        last_time = current_time;
+
         glfwPollEvents();
         if (framebuffer_resized) {
             framebuffer_resized = false;
             recreate_swapchain();
         }
+
+        // Update camera
+        update_camera(delta_time);
+
         fps_frames++;
         double now = glfwGetTime();
         if (now - fps_timer >= 1.0) {
@@ -361,24 +295,33 @@ void App::main_loop() {
         if (shaders.hot_reload(device.handle())) {
             std::cout << "Shaders reloaded, recreating pipeline" << std::endl;
             // Shaders were reloaded, recreate pipeline
-            pipeline.recreate(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptorSetLayout);
+            pipeline.recreate(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent);
         }
 
-        // Update uniform buffer
+        // Prepare matrices for push constants
+        UniformBufferObject ubo{};
+
+        // Model matrix - rotating triangle/quad (task 2.7.9)
         static auto startTime = std::chrono::high_resolution_clock::now();
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        // Position the quad at Z=-1 (in front of camera) and rotate
+        ubo.model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f)) *
+                   glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-        UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapchain.extent.width / (float)swapchain.extent.height, 0.1f, 10.0f);
-        ubo.proj[1][1] *= -1; // GLM was designed for OpenGL, where the Y coordinate of the clip coordinates is inverted
+        // Camera view matrix (task 2.8.2)
+        // Updated to match movement coordinate system (Y = forward)
+        glm::vec3 camera_target = camera.position + glm::vec3(
+            cos(camera.pitch) * sin(camera.yaw),
+            cos(camera.pitch) * cos(camera.yaw),
+            sin(camera.pitch)
+        );
+        glm::vec3 camera_up = glm::vec3(0.0f, 0.0f, 1.0f); // Z-up world
+        ubo.view = glm::lookAt(camera.position, camera_target, camera_up);
 
-        void* data;
-        vmaMapMemory(allocator, uniformBufferAllocation, &data);
-        memcpy(data, &ubo, sizeof(ubo));
-        vmaUnmapMemory(allocator, uniformBufferAllocation);
+        // Perspective projection (task 2.8.1)
+        float aspect = static_cast<float>(swapchain.extent.width) / static_cast<float>(swapchain.extent.height);
+        ubo.proj = glm::perspective(camera.fov, aspect, camera.near_plane, camera.far_plane);
 
         FrameSync& frame = frames.current();
         vkWaitForFences(device.handle(), 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
@@ -390,7 +333,7 @@ void App::main_loop() {
         if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) continue;
 
         vkResetCommandBuffer(frame.cmd, 0);
-        record_command(frame.cmd, imageIndex, swapchain.images[imageIndex]);
+        record_command(frame.cmd, imageIndex, swapchain.images[imageIndex], ubo);
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit{};
@@ -421,6 +364,93 @@ void App::main_loop() {
     }
 }
 
+// Input callbacks
+void App::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
+
+    if (action == GLFW_PRESS) {
+        switch (key) {
+            case GLFW_KEY_W: app->input.w_pressed = true; break;
+            case GLFW_KEY_A: app->input.a_pressed = true; break;
+            case GLFW_KEY_S: app->input.s_pressed = true; break;
+            case GLFW_KEY_D: app->input.d_pressed = true; break;
+            case GLFW_KEY_ESCAPE:
+                app->camera.mouse_captured = !app->camera.mouse_captured;
+                glfwSetInputMode(window, GLFW_CURSOR,
+                    app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+                break;
+        }
+    } else if (action == GLFW_RELEASE) {
+        switch (key) {
+            case GLFW_KEY_W: app->input.w_pressed = false; break;
+            case GLFW_KEY_A: app->input.a_pressed = false; break;
+            case GLFW_KEY_S: app->input.s_pressed = false; break;
+            case GLFW_KEY_D: app->input.d_pressed = false; break;
+        }
+    }
+}
+
+void App::cursor_pos_callback(GLFWwindow* window, double xpos, double ypos) {
+    App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
+
+    if (!app->input.mouse_initialized) {
+        app->input.last_mouse_x = xpos;
+        app->input.last_mouse_y = ypos;
+        app->input.mouse_initialized = true;
+        return;
+    }
+
+    if (!app->camera.mouse_captured) return;
+
+    double delta_x = xpos - app->input.last_mouse_x;
+    double delta_y = ypos - app->input.last_mouse_y;
+
+    app->input.last_mouse_x = xpos;
+    app->input.last_mouse_y = ypos;
+
+    // Mouse sensitivity
+    const float sensitivity = 0.001f;
+    app->camera.yaw += delta_x * sensitivity;  // Mouse right increases yaw (look right)
+    app->camera.pitch += delta_y * sensitivity; // Mouse down increases pitch (look down)
+
+    // Clamp pitch to prevent flipping
+    app->camera.pitch = glm::clamp(app->camera.pitch, -glm::pi<float>()/2.0f + 0.1f, glm::pi<float>()/2.0f - 0.1f);
+}
+
+void App::update_camera(float delta_time) {
+    // Movement parameters
+    const float max_speed = 3.0f;
+    const float acceleration = 8.0f;
+    const float deceleration = 12.0f;
+
+    // Calculate movement vectors based on camera yaw (horizontal rotation only)
+    // Use Y as forward, X as right (more intuitive for FPS controls)
+    glm::vec3 forward = glm::vec3(sin(camera.yaw), cos(camera.yaw), 0.0f);
+    glm::vec3 right = glm::vec3(cos(camera.yaw), -sin(camera.yaw), 0.0f);
+
+    // Calculate desired movement direction
+    glm::vec3 desired_velocity{0.0f};
+    if (input.w_pressed) desired_velocity += forward;
+    if (input.s_pressed) desired_velocity -= forward;
+    if (input.a_pressed) desired_velocity -= right;
+    if (input.d_pressed) desired_velocity += right;
+
+    // Normalize if moving diagonally
+    if (glm::length(desired_velocity) > 0.0f) {
+        desired_velocity = glm::normalize(desired_velocity) * max_speed;
+    }
+
+    // Smooth acceleration/deceleration
+    glm::vec3 velocity_diff = desired_velocity - camera.velocity;
+    float accel_rate = (glm::length(desired_velocity) > 0.0f) ? acceleration : deceleration;
+    float delta_v = accel_rate * delta_time;
+    if (delta_v > 1.0f) delta_v = 1.0f;
+    camera.velocity += velocity_diff * delta_v;
+
+    // Apply velocity to position
+    camera.position += camera.velocity * delta_time;
+}
+
 void App::cleanup() {
     if (device.handle()) vkDeviceWaitIdle(device.handle());
 
@@ -443,22 +473,7 @@ void App::cleanup() {
         indexBufferAllocation = VK_NULL_HANDLE;
     }
 
-    // Destroy uniform buffer
-    if (uniformBuffer) {
-        vmaDestroyBuffer(allocator, uniformBuffer, uniformBufferAllocation);
-        uniformBuffer = VK_NULL_HANDLE;
-        uniformBufferAllocation = VK_NULL_HANDLE;
-    }
-
-    // Destroy descriptor set resources
-    if (descriptorPool) {
-        vkDestroyDescriptorPool(device.handle(), descriptorPool, nullptr);
-        descriptorPool = VK_NULL_HANDLE;
-    }
-    if (descriptorSetLayout) {
-        vkDestroyDescriptorSetLayout(device.handle(), descriptorSetLayout, nullptr);
-        descriptorSetLayout = VK_NULL_HANDLE;
-    }
+    // No UBO or descriptor sets to destroy (using push constants)
 
     // Destroy VMA allocator
     if (allocator) {
@@ -475,7 +490,7 @@ void App::cleanup() {
     glfwTerminate();
 }
 
-bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image) {
+bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image, const UniformBufferObject& ubo) {
     VkCommandBufferBeginInfo bi{};
     bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -500,8 +515,8 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image
     // Bind pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
 
-    // Bind descriptor set
-    // vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptorSet, 0, nullptr);
+    // Push constants
+    vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UniformBufferObject), &ubo);
 
     // Bind vertex buffer
     VkBuffer vertexBuffers[] = {vertexBuffer};

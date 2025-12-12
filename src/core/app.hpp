@@ -26,7 +26,12 @@ private:
     void main_loop();
     void cleanup();
 
-    bool record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image);
+    bool record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image, const UniformBufferObject& ubo);
+
+    // Input handling
+    static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+    static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos);
+    void update_camera(float delta_time);
 
     GLFWwindow* window{};
     VkInstanceContext instance;
@@ -44,6 +49,29 @@ private:
     ShaderManager::ShaderModule* vert_shader{};
     ShaderManager::ShaderModule* frag_shader{};
 
+    // Camera state
+    struct Camera {
+        glm::vec3 position{0.0f, 0.0f, 2.0f};
+        glm::vec3 velocity{0.0f, 0.0f, 0.0f};
+        float yaw{0.0f};
+        float pitch{-1.57079632679f}; // Look down at origin (-π/2)
+        float fov{glm::radians(45.0f)};
+        float near_plane{0.1f};
+        float far_plane{100.0f}; // Normal depth for now
+        bool mouse_captured{false};
+    } camera;
+
+    // Input state
+    struct InputState {
+        bool w_pressed{false};
+        bool a_pressed{false};
+        bool s_pressed{false};
+        bool d_pressed{false};
+        double last_mouse_x{0.0};
+        double last_mouse_y{0.0};
+        bool mouse_initialized{false};
+    } input;
+
     // VMA
     VmaAllocator allocator{};
     VkBuffer vertexBuffer{};
@@ -51,11 +79,6 @@ private:
     VkBuffer indexBuffer{};
     VmaAllocation indexBufferAllocation{};
 
-    // Uniform buffer
-    VkBuffer uniformBuffer{};
-    VmaAllocation uniformBufferAllocation{};
-    VkDescriptorSetLayout descriptorSetLayout{};
-    VkDescriptorPool descriptorPool{};
-    VkDescriptorSet descriptorSet{};
+    // Using push constants instead of UBO
 };
 
