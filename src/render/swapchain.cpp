@@ -50,7 +50,7 @@ bool SwapchainContext::create(VkDevice device, VkPhysicalDevice phys, VkSurfaceK
     ci.imageColorSpace = chosenFormat.colorSpace;
     ci.imageExtent = chosenExtent;
     ci.imageArrayLayers = 1;
-    ci.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     uint32_t indices[] = { *fam.graphics, *fam.present };
     if (fam.graphics != fam.present) {

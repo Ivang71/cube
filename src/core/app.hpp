@@ -9,6 +9,9 @@
 #include "render/vk_device.hpp"
 #include "render/swapchain.hpp"
 #include "render/frame.hpp"
+#include "render/shader.hpp"
+#include "render/render_pass.hpp"
+#include "render/pipeline.hpp"
 
 class App {
 public:
@@ -31,5 +34,13 @@ private:
     FrameManager frames;
     VkSurfaceKHR surface{};
     bool framebuffer_resized = false;
+
+    ShaderManager shaders;
+    RenderPassContext render_pass;
+    FramebufferContext framebuffers;
+    GraphicsPipelineContext pipeline;
+
+    VkShaderModule vert_shader{};
+    VkShaderModule frag_shader{};
 };
 

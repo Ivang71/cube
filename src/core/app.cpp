@@ -2,6 +2,14 @@
 
 #include <cstdio>
 #include <cmath>
+#include <array>
+#include <filesystem>
+#include <algorithm>
+#include <vector>
+#include <string>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 int App::run() {
     if (!init_window()) return 1;
@@ -30,6 +38,57 @@ bool App::init_vulkan() {
     if (!device.create(instance.handle(), surface, instance.validation_enabled())) return false;
     if (!create_swapchain()) return false;
     if (!frames.create(device.handle(), *device.queues().graphics, 2)) return false;
+
+    // Initialize rendering components
+    if (!shaders.create(device.handle())) return false;
+    if (!render_pass.create(device.handle(), device.physical(), swapchain.format)) return false;
+    if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, swapchain.views, swapchain.extent)) return false;
+
+    // Load shaders from the build directory (where CMake places them)
+    // Detect build configuration from executable path
+    std::filesystem::path exe_path;
+    #ifdef _WIN32
+        char exe_buffer[MAX_PATH];
+        GetModuleFileNameA(nullptr, exe_buffer, MAX_PATH);
+        exe_path = exe_buffer;
+    #else
+        exe_path = std::filesystem::read_symlink("/proc/self/exe");
+    #endif
+
+    // Extract build configuration from path (e.g., "debug", "release", "profile")
+    std::string config = "debug"; // default fallback
+    std::string exe_path_str = exe_path.string();
+
+    // Look for build configuration in path (case-insensitive)
+    std::vector<std::string> possible_configs = {"debug", "release", "profile", "relwithdebinfo"};
+    for (const auto& conf : possible_configs) {
+        std::string search_pattern = std::string("\\") + conf + std::string("\\");
+        if (exe_path_str.find(search_pattern) != std::string::npos) {
+            config = conf;
+            break;
+        }
+        // Also check for case variations
+        std::string upper_conf = conf;
+        std::transform(upper_conf.begin(), upper_conf.end(), upper_conf.begin(), ::toupper);
+        search_pattern = std::string("\\") + upper_conf + std::string("\\");
+        if (exe_path_str.find(search_pattern) != std::string::npos) {
+            config = conf;
+            break;
+        }
+    }
+
+    // Construct shader paths relative to executable location
+    std::filesystem::path shader_dir = exe_path.parent_path().parent_path() / "shaders";
+    std::filesystem::path vert_path = shader_dir / "triangle.vert.spv";
+    std::filesystem::path frag_path = shader_dir / "triangle.frag.spv";
+
+    vert_shader = shaders.load_vertex(device.handle(), vert_path.string());
+    frag_shader = shaders.load_fragment(device.handle(), frag_path.string());
+    if (!vert_shader || !frag_shader) return false;
+    if (!vert_shader || !frag_shader) return false;
+
+    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader, frag_shader, swapchain.extent)) return false;
+
     return true;
 }
 
@@ -44,8 +103,14 @@ bool App::recreate_swapchain() {
         glfwWaitEvents();
     }
     vkDeviceWaitIdle(device.handle());
+
+    framebuffers.destroy(device.handle());
     swapchain.destroy(device.handle());
-    return create_swapchain();
+
+    if (!create_swapchain()) return false;
+    if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, swapchain.views, swapchain.extent)) return false;
+
+    return true;
 }
 
 void App::main_loop() {
@@ -110,6 +175,14 @@ void App::main_loop() {
 
 void App::cleanup() {
     if (device.handle()) vkDeviceWaitIdle(device.handle());
+
+    pipeline.destroy(device.handle());
+    if (frag_shader) vkDestroyShaderModule(device.handle(), frag_shader, nullptr);
+    if (vert_shader) vkDestroyShaderModule(device.handle(), vert_shader, nullptr);
+    framebuffers.destroy(device.handle());
+    render_pass.destroy(device.handle());
+    shaders.destroy(device.handle());
+
     swapchain.destroy(device.handle());
     frames.destroy(device.handle());
     device.destroy();
@@ -119,46 +192,51 @@ void App::cleanup() {
     glfwTerminate();
 }
 
-bool App::record_command(VkCommandBuffer cmd, uint32_t, VkImage image) {
+bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image) {
     VkCommandBufferBeginInfo bi{};
     bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS) return false;
 
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.layerCount = 1;
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &barrier);
+    // Begin render pass (this handles layout transitions automatically)
+    std::array<VkClearValue, 2> clear_values{};
+    clear_values[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    clear_values[1].depthStencil = {1.0f, 0};
 
-    float t = static_cast<float>(glfwGetTime());
-    VkClearColorValue color{};
-    color.float32[0] = 0.5f + 0.5f * std::sin(t * 0.7f);
-    color.float32[1] = 0.5f + 0.5f * std::sin(t * 1.1f + 1.0f);
-    color.float32[2] = 0.5f + 0.5f * std::sin(t * 1.7f + 2.0f);
-    color.float32[3] = 1.0f;
+    VkRenderPassBeginInfo rp_bi{};
+    rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    rp_bi.renderPass = render_pass.handle;
+    rp_bi.framebuffer = framebuffers.framebuffers[imageIndex];
+    rp_bi.renderArea.offset = {0, 0};
+    rp_bi.renderArea.extent = swapchain.extent;
+    rp_bi.clearValueCount = static_cast<uint32_t>(clear_values.size());
+    rp_bi.pClearValues = clear_values.data();
 
-    VkImageSubresourceRange range{};
-    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    range.levelCount = 1;
-    range.layerCount = 1;
-    vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
+    vkCmdBeginRenderPass(cmd, &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = 0;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &barrier);
+    // Bind pipeline
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+
+    // Set viewport and scissor
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchain.extent.width);
+    viewport.height = static_cast<float>(swapchain.extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchain.extent;
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Draw triangle (vertices are hardcoded in shader)
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    // End render pass (this handles layout transitions back to present automatically)
+    vkCmdEndRenderPass(cmd);
 
     return vkEndCommandBuffer(cmd) == VK_SUCCESS;
 }

@@ -22,6 +22,21 @@ FetchContent_MakeAvailable(glfw)
 
 find_package(Vulkan REQUIRED)
 
+# Compile shaders
+add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
+    COMMAND glslangValidator -V ${CMAKE_SOURCE_DIR}/shaders/triangle.vert -o ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
+    DEPENDS ${CMAKE_SOURCE_DIR}/shaders/triangle.vert
+    COMMENT "Compiling triangle.vert to SPIR-V"
+)
+
+add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv
+    COMMAND glslangValidator -V ${CMAKE_SOURCE_DIR}/shaders/triangle.frag -o ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv
+    DEPENDS ${CMAKE_SOURCE_DIR}/shaders/triangle.frag
+    COMMENT "Compiling triangle.frag to SPIR-V"
+)
+
 add_executable(cube
   src/core/app.cpp
   src/core/app.hpp
@@ -33,8 +48,16 @@ add_executable(cube
   src/render/swapchain.hpp
   src/render/frame.cpp
   src/render/frame.hpp
+  src/render/shader.cpp
+  src/render/shader.hpp
+  src/render/render_pass.cpp
+  src/render/render_pass.hpp
+  src/render/pipeline.cpp
+  src/render/pipeline.hpp
   src/render/types.hpp
   src/main.cpp
+  ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
+  ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv
 )
 
 target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan)
