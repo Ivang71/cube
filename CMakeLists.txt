@@ -89,6 +89,8 @@ add_executable(cube
   src/core/app.hpp
   src/core/console.cpp
   src/core/console.hpp
+  src/core/log.cpp
+  src/core/log.hpp
   src/render/vk_instance.cpp
   src/render/vk_instance.hpp
   src/render/vk_device.cpp

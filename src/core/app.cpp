@@ -1,4 +1,5 @@
 #include "app.hpp"
+#include "log.hpp"
 
 #include <cstdio>
 #include <iostream>
@@ -20,9 +21,26 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+static std::filesystem::path exe_dir() {
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n == 0) return std::filesystem::current_path();
+    return std::filesystem::path(std::string(buf, buf + n)).parent_path();
+#else
+    return std::filesystem::read_symlink("/proc/self/exe").parent_path();
+#endif
+}
+
 int App::run() {
-    if (!init_window()) return 1;
+    cube::log::Config log_cfg{};
+    log_cfg.file_path = (exe_dir() / "cube.log").string();
+    cube::log::init(log_cfg);
+    LOG_INFO("Core", "Startup");
+    if (!init_window()) { cube::log::shutdown(); return 1; }
+    LOG_INFO("Core", "Window initialized");
     if (!init_vulkan()) { cleanup(); return 1; }
+    LOG_INFO("Core", "Vulkan initialized");
     main_loop();
     cleanup();
     return 0;
@@ -60,7 +78,7 @@ bool App::init_vulkan() {
     allocatorInfo.device = device.handle();
     allocatorInfo.instance = instance.handle();
     if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS) {
-        std::cerr << "Failed to create VMA allocator" << std::endl;
+        LOG_ERROR("Core", "Failed to create VMA allocator");
         return false;
     }
 
@@ -429,7 +447,7 @@ void App::main_loop() {
         }
 
         if (shaders.hot_reload(device.handle())) {
-            std::cout << "Shaders reloaded, recreating pipeline" << std::endl;
+            LOG_INFO("Render", "Shaders reloaded, recreating pipeline");
             pipeline.recreate(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptor_set_layout);
         }
 
@@ -527,6 +545,7 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
                 case GLFW_KEY_S: app->input.s_pressed = true; break;
                 case GLFW_KEY_D: app->input.d_pressed = true; break;
                 case GLFW_KEY_F3: app->show_debug_overlay = !app->show_debug_overlay; break;
+                case GLFW_KEY_F4: app->show_log_viewer = !app->show_log_viewer; break;
                 case GLFW_KEY_T:
                     app->show_console = true;
                     app->console.set_focus();
@@ -810,6 +829,8 @@ void App::cleanup() {
     instance.destroy();
     if (window) glfwDestroyWindow(window);
     glfwTerminate();
+    LOG_INFO("Core", "Shutdown");
+    cube::log::shutdown();
 }
 
 bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
@@ -881,7 +902,8 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
         vram_total,
         cpu_usage,
         gpu_usage,
-        show_debug_overlay
+        show_debug_overlay,
+        show_log_viewer
     };
     imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data, &console, &show_console, !show_console);
 

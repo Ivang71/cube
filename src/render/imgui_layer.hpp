@@ -21,6 +21,7 @@ struct DebugData {
     float cpu_usage;
     float gpu_usage;
     bool show_overlay;
+    bool show_log_viewer;
 };
 
 class ImGuiLayer {

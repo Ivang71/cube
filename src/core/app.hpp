@@ -94,6 +94,7 @@ private:
 
     // Debug overlay state
     bool show_debug_overlay{false};
+    bool show_log_viewer{false};
 
     // Console
     Console console;

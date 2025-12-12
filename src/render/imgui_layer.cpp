@@ -1,5 +1,7 @@
 #include "imgui_layer.hpp"
 #include "../core/console.hpp"
+#include "../core/log.hpp"
+#include <cstdio>
 #include <iostream>
 #include <array>
 #include <string>
@@ -265,6 +267,55 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
         // Pop the style changes
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(1);
+    }
+
+    if (debug_data.show_log_viewer) {
+        static bool show_info = true;
+        static bool show_warn = true;
+        static bool show_error = true;
+        static ImGuiTextFilter filter;
+        static bool auto_scroll = true;
+
+        ImGui::SetNextWindowSize(ImVec2(900, 420), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Log", nullptr)) {
+            if (ImGui::Button("Clear")) cube::log::clear();
+            ImGui::SameLine();
+            ImGui::Checkbox("Auto-scroll", &auto_scroll);
+            ImGui::SameLine();
+            ImGui::Checkbox("INFO", &show_info);
+            ImGui::SameLine();
+            ImGui::Checkbox("WARN", &show_warn);
+            ImGui::SameLine();
+            ImGui::Checkbox("ERROR", &show_error);
+            filter.Draw("Filter");
+
+            std::vector<cube::log::Entry> entries = cube::log::snapshot();
+            ImGui::Separator();
+            ImGui::BeginChild("log_scroller", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(entries.size()));
+            while (clipper.Step()) {
+                for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+                    const auto& e = entries[static_cast<size_t>(i)];
+                    bool ok = true;
+                    if (e.level == cube::log::Level::Info && !show_info) ok = false;
+                    if (e.level == cube::log::Level::Warn && !show_warn) ok = false;
+                    if (e.level == cube::log::Level::Error && !show_error) ok = false;
+                    if (ok && !filter.PassFilter(e.text.c_str())) ok = false;
+                    if (!ok) continue;
+
+                    if (e.level == cube::log::Level::Error) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+                    else if (e.level == cube::log::Level::Warn) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.25f, 1.0f));
+                    ImGui::TextUnformatted(e.text.c_str());
+                    if (e.level != cube::log::Level::Info) ImGui::PopStyleColor(1);
+                }
+            }
+
+            if (auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 5.0f) ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+        }
+        ImGui::End();
     }
 
     // Render console if provided
