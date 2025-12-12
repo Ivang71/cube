@@ -10,7 +10,7 @@ switch ($config) {
         $preset = "debug"
         $exe = "$root/build/debug/Debug/cube.exe"
     }
-    "release" { 
+    "release" {
         $preset = "release"
         $exe = "$root/build/release/Release/cube.exe"
     }
@@ -24,6 +24,25 @@ switch ($config) {
     }
 }
 
-cmake --preset $preset
-cmake --build --preset $preset
+# Run cmake configure and fail fast on non-zero exit code
+& cmake --preset $preset
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "cmake --preset $preset failed (exit code $LASTEXITCODE). Not running the executable."
+    exit $LASTEXITCODE
+}
+
+# Run build and fail fast on non-zero exit code
+& cmake --build --preset $preset
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "cmake --build --preset $preset failed (exit code $LASTEXITCODE). Not running the executable."
+    exit $LASTEXITCODE
+}
+
+# Ensure the executable actually exists before running
+if (-not (Test-Path $exe)) {
+    Write-Error "Executable not found at: $exe. Build reported success but executable missing. Not running anything."
+    exit 1
+}
+
+# Finally run the executable
 & $exe

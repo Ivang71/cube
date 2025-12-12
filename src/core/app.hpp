@@ -3,6 +3,7 @@
 #include <vector>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <vk_mem_alloc.h>
 
 #include "render/types.hpp"
 #include "render/vk_instance.hpp"
@@ -42,5 +43,10 @@ private:
 
     ShaderManager::ShaderModule* vert_shader{};
     ShaderManager::ShaderModule* frag_shader{};
+
+    // VMA
+    VmaAllocator allocator{};
+    VkBuffer vertexBuffer{};
+    VmaAllocation vertexBufferAllocation{};
 };
 

@@ -40,6 +40,16 @@ bool App::init_vulkan() {
     if (!create_swapchain()) return false;
     if (!frames.create(device.handle(), *device.queues().graphics, 2)) return false;
 
+    // Initialize VMA
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = device.physical();
+    allocatorInfo.device = device.handle();
+    allocatorInfo.instance = instance.handle();
+    if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS) {
+        std::cerr << "Failed to create VMA allocator" << std::endl;
+        return false;
+    }
+
     // Initialize rendering components
     if (!shaders.create(device.handle())) return false;
     if (!render_pass.create(device.handle(), device.physical(), swapchain.format)) return false;
@@ -93,6 +103,66 @@ bool App::init_vulkan() {
     if (!vert_shader || !frag_shader) return false;
 
     if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent)) return false;
+
+    // Create vertex buffer
+    const std::vector<Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
+
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+    // Create staging buffer
+    VkBuffer stagingBuffer;
+    VmaAllocation stagingBufferAllocation;
+    VkBufferCreateInfo stagingBufferInfo{};
+    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingBufferInfo.size = bufferSize;
+    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo stagingAllocInfo = {};
+    stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+    if (vmaCreateBuffer(allocator, &stagingBufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingBufferAllocation, nullptr) != VK_SUCCESS) {
+        std::cerr << "Failed to create staging buffer" << std::endl;
+        return false;
+    }
+
+    // Copy vertex data to staging buffer
+    void* data;
+    vmaMapMemory(allocator, stagingBufferAllocation, &data);
+    memcpy(data, vertices.data(), (size_t)bufferSize);
+    vmaUnmapMemory(allocator, stagingBufferAllocation);
+
+    // Create device-local vertex buffer
+    VkBufferCreateInfo vertexBufferInfo{};
+    vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    vertexBufferInfo.size = bufferSize;
+    vertexBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    vertexBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo vertexAllocInfo = {};
+    vertexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    if (vmaCreateBuffer(allocator, &vertexBufferInfo, &vertexAllocInfo, &vertexBuffer, &vertexBufferAllocation, nullptr) != VK_SUCCESS) {
+        std::cerr << "Failed to create vertex buffer" << std::endl;
+        return false;
+    }
+
+    // Copy staging buffer to vertex buffer
+    VkCommandBuffer commandBuffer = frames.beginSingleTimeCommands(device.handle(), *device.queues().graphics);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = bufferSize;
+    vkCmdCopyBuffer(commandBuffer, stagingBuffer, vertexBuffer, 1, &copyRegion);
+
+    frames.endSingleTimeCommands(device.handle(), device.graphics(), commandBuffer);
+
+    // Clean up staging buffer
+    vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAllocation);
 
     return true;
 }
@@ -193,6 +263,19 @@ void App::cleanup() {
     render_pass.destroy(device.handle());
     shaders.destroy(device.handle());
 
+    // Destroy vertex buffer
+    if (vertexBuffer) {
+        vmaDestroyBuffer(allocator, vertexBuffer, vertexBufferAllocation);
+        vertexBuffer = VK_NULL_HANDLE;
+        vertexBufferAllocation = VK_NULL_HANDLE;
+    }
+
+    // Destroy VMA allocator
+    if (allocator) {
+        vmaDestroyAllocator(allocator);
+        allocator = VK_NULL_HANDLE;
+    }
+
     swapchain.destroy(device.handle());
     frames.destroy(device.handle());
     device.destroy();
@@ -226,6 +309,11 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image
 
     // Bind pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+
+    // Bind vertex buffer
+    VkBuffer vertexBuffers[] = {vertexBuffer};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 
     // Set viewport and scissor
     VkViewport viewport{};

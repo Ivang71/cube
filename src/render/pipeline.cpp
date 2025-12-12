@@ -1,4 +1,5 @@
 #include "pipeline.hpp"
+#include "types.hpp"
 
 #include <iostream>
 #include <array>
@@ -27,9 +28,16 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
 
     std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages = {vert_stage, frag_stage};
 
-    // Vertex input state (empty for now)
+    // Vertex input state
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertex_input{};
     vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input.vertexBindingDescriptionCount = 1;
+    vertex_input.pVertexBindingDescriptions = &bindingDescription;
+    vertex_input.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertex_input.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     // Input assembly
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};

@@ -22,6 +22,14 @@ FetchContent_MakeAvailable(glfw)
 
 find_package(Vulkan REQUIRED)
 
+# VMA (Vulkan Memory Allocator)
+FetchContent_Declare(
+  vma
+  URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.0.1.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(vma)
+
 # Compile shaders
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
@@ -60,6 +68,6 @@ add_executable(cube
   ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv
 )
 
-target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan)
+target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan VulkanMemoryAllocator)
 
-target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR}/include)
