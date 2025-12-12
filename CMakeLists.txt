@@ -87,6 +87,8 @@ add_custom_command(
 add_executable(cube
   src/core/app.cpp
   src/core/app.hpp
+  src/core/console.cpp
+  src/core/console.hpp
   src/render/vk_instance.cpp
   src/render/vk_instance.hpp
   src/render/vk_device.cpp

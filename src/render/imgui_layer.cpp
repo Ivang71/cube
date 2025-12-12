@@ -1,4 +1,5 @@
 #include "imgui_layer.hpp"
+#include "../core/console.hpp"
 #include <iostream>
 #include <array>
 #include <string>
@@ -209,7 +210,7 @@ void ImGuiLayer::new_frame() {
     ImGui::NewFrame();
 }
 
-void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data) {
+void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data, class Console* console, bool* show_console, bool show_chat_messages) {
     // Show debug overlay if enabled
     if (debug_data.show_overlay) {
         // Style the window background and remove borders
@@ -264,6 +265,16 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
         // Pop the style changes
         ImGui::PopStyleVar(2);
         ImGui::PopStyleColor(1);
+    }
+
+    // Render console if provided
+    if (console && show_console) {
+        console->render(show_console);
+    }
+
+    // Render chat messages if requested (when console is not open)
+    if (console && show_chat_messages && (!show_console || !*show_console)) {
+        console->render_chat_messages();
     }
 
     // Render ImGui

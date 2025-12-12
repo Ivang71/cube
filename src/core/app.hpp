@@ -19,6 +19,7 @@
 #include "render/render_pass.hpp"
 #include "render/pipeline.hpp"
 #include "render/imgui_layer.hpp"
+#include "console.hpp"
 
 class App {
 public:
@@ -31,6 +32,7 @@ private:
     bool recreate_swapchain();
     void main_loop();
     void cleanup();
+    void register_console_commands();
 
     bool record_command(VkCommandBuffer cmd, uint32_t imageIndex);
 
@@ -91,7 +93,12 @@ private:
     } input;
 
     // Debug overlay state
-    bool show_debug_overlay{true};
+    bool show_debug_overlay{false};
+
+    // Console
+    Console console;
+    bool show_console{false};
+    bool prev_show_console{false}; // Track previous console state for mouse capture
 
     // Debug metrics
     float fps{0.0f};

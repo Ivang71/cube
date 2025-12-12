@@ -8,6 +8,8 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <glm/glm.hpp>
 
+class Console;
+
 struct DebugData {
     float fps;
     float frame_time_ms;
@@ -35,7 +37,7 @@ public:
     void destroy_framebuffers(VkDevice device);
 
     void new_frame();
-    void render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data);
+    void render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data, class Console* console = nullptr, bool* show_console = nullptr, bool show_chat_messages = false);
 
     bool recreate_swapchain(VkDevice device, const std::vector<VkImageView>& image_views, VkExtent2D extent);
 

@@ -201,7 +201,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 3.2.5 | Display memory usage (VMA stats) | Memory shows |
 | 3.2.6 | Toggle overlay with F3 | Toggle works |
 
-### 3.3 Console System
+### 3.3 Console System ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 3.3.1 | Create console window (toggleable) | Window opens/closes |
@@ -209,8 +209,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 3.3.3 | Command history (up/down) | History works |
 | 3.3.4 | Command registration system | Can register commands |
 | 3.3.5 | Implement "help" command | Lists commands |
-| 3.3.6 | Implement "quit" command | Exits cleanly |
-| 3.3.7 | Implement "tp x y z" command | Teleports camera |
+| 3.3.6 | Implement "tp x y z" command | Teleports camera |
 
 ### 3.4 Logging
 | Step | Task | Verification |

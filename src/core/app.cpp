@@ -314,7 +314,43 @@ bool App::init_vulkan() {
 
     if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptor_set_layout)) return false;
 
+    // Register console commands
+    register_console_commands();
+
     return true;
+}
+
+void App::register_console_commands() {
+    // Help command
+    console.register_command("help", "Show available commands",
+        [this](const std::vector<std::string>& args) {
+            console.add_log_message("Available commands:");
+            for (const auto& [name, cmd] : console.get_commands()) {
+                console.add_log_message("  /" + name + " - " + cmd.description);
+            }
+        });
+
+
+    // Teleport command
+    console.register_command("tp", "Teleport camera to position (/tp x y z)",
+        [this](const std::vector<std::string>& args) {
+            if (args.size() != 4) {
+                console.add_log_message("Usage: tp <x> <y> <z>");
+                return;
+            }
+
+            try {
+                float x = std::stof(args[1]);
+                float y = std::stof(args[2]);
+                float z = std::stof(args[3]);
+
+                camera.position = glm::vec3(x, y, z);
+                console.add_log_message("Teleported to: (" + std::to_string(x) + ", " +
+                                       std::to_string(y) + ", " + std::to_string(z) + ")", true);
+            } catch (const std::exception&) {
+                console.add_log_message("Error: Invalid coordinates. Use numbers like: tp 10.5 20.0 -5.2");
+            }
+        });
 }
 
 bool App::create_swapchain() {
@@ -357,6 +393,20 @@ void App::main_loop() {
 
         // Update camera
         update_camera(delta_time);
+
+        // Handle console mouse capture
+        if (show_console != prev_show_console) {
+            prev_show_console = show_console;
+            if (show_console) {
+                // Console opened - release mouse capture
+                camera.mouse_captured = false;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            } else {
+                // Console closed - recapture mouse
+                camera.mouse_captured = true;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            }
+        }
 
         // Update debug stats every 0.3 seconds
         if (current_time - last_debug_stats_update >= DEBUG_STATS_UPDATE_INTERVAL) {
@@ -461,24 +511,48 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
     App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
 
     if (action == GLFW_PRESS) {
-        switch (key) {
-            case GLFW_KEY_W: app->input.w_pressed = true; break;
-            case GLFW_KEY_A: app->input.a_pressed = true; break;
-            case GLFW_KEY_S: app->input.s_pressed = true; break;
-            case GLFW_KEY_D: app->input.d_pressed = true; break;
-            case GLFW_KEY_F3: app->show_debug_overlay = !app->show_debug_overlay; break;
-            case GLFW_KEY_ESCAPE:
-                app->camera.mouse_captured = !app->camera.mouse_captured;
-                glfwSetInputMode(window, GLFW_CURSOR,
-                    app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-                break;
+        // If console is open, only allow console-related keys
+        if (app->show_console) {
+            switch (key) {
+                case GLFW_KEY_ESCAPE:
+                    app->show_console = false;
+                    break;
+                // Other keys are handled by ImGui/console
+            }
+        } else {
+            // Normal gameplay controls
+            switch (key) {
+                case GLFW_KEY_W: app->input.w_pressed = true; break;
+                case GLFW_KEY_A: app->input.a_pressed = true; break;
+                case GLFW_KEY_S: app->input.s_pressed = true; break;
+                case GLFW_KEY_D: app->input.d_pressed = true; break;
+                case GLFW_KEY_F3: app->show_debug_overlay = !app->show_debug_overlay; break;
+                case GLFW_KEY_T:
+                    app->show_console = true;
+                    app->console.set_focus();
+                    app->console.set_input_text("");
+                    break;
+                case GLFW_KEY_SLASH:
+                    app->show_console = true;
+                    app->console.set_focus();
+                    app->console.set_input_text("/");
+                    break;
+                case GLFW_KEY_ESCAPE:
+                    app->camera.mouse_captured = !app->camera.mouse_captured;
+                    glfwSetInputMode(window, GLFW_CURSOR,
+                        app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+                    break;
+            }
         }
     } else if (action == GLFW_RELEASE) {
-        switch (key) {
-            case GLFW_KEY_W: app->input.w_pressed = false; break;
-            case GLFW_KEY_A: app->input.a_pressed = false; break;
-            case GLFW_KEY_S: app->input.s_pressed = false; break;
-            case GLFW_KEY_D: app->input.d_pressed = false; break;
+        // Only handle movement key releases when console is closed
+        if (!app->show_console) {
+            switch (key) {
+                case GLFW_KEY_W: app->input.w_pressed = false; break;
+                case GLFW_KEY_A: app->input.a_pressed = false; break;
+                case GLFW_KEY_S: app->input.s_pressed = false; break;
+                case GLFW_KEY_D: app->input.d_pressed = false; break;
+            }
         }
     }
 }
@@ -746,7 +820,7 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
 
     // Begin render pass (this handles layout transitions automatically)
     std::array<VkClearValue, 2> clear_values{};
-    clear_values[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    clear_values[0].color = {0.25f, 0.25f, 0.3f, 1.0f}; // Grayish background color
     clear_values[1].depthStencil = {0.0f, 0};
 
     VkRenderPassBeginInfo rp_bi{};
@@ -809,7 +883,7 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
         gpu_usage,
         show_debug_overlay
     };
-    imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data);
+    imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data, &console, &show_console, !show_console);
 
     return vkEndCommandBuffer(cmd) == VK_SUCCESS;
 }
