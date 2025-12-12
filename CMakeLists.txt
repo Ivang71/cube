@@ -16,6 +16,7 @@ if (MSVC)
 endif()
 
 option(CUBE_UNITY_BUILD "Enable unity/jumbo build for faster compiles" ON)
+option(CUBE_TRACY "Enable Tracy profiling" OFF)
 
 include(FetchContent)
 
@@ -69,6 +70,17 @@ add_library(imgui_lib STATIC
 target_include_directories(imgui_lib PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui_lib PUBLIC glfw Vulkan::Vulkan)
 
+if (CUBE_TRACY)
+  set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+  set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    tracy
+    URL https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_MakeAvailable(tracy)
+endif()
+
 # Compile shaders
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
@@ -91,6 +103,8 @@ add_executable(cube
   src/core/console.hpp
   src/core/log.cpp
   src/core/log.hpp
+  src/core/profile.hpp
+  src/core/tracy_new_delete.cpp
   src/render/vk_instance.cpp
   src/render/vk_instance.hpp
   src/render/vk_device.cpp
@@ -119,5 +133,9 @@ endif()
 
 target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan VulkanMemoryAllocator glm::glm)
 target_link_libraries(cube PRIVATE imgui_lib)
+if (CUBE_TRACY)
+  target_link_libraries(cube PRIVATE TracyClient)
+  target_compile_definitions(cube PRIVATE TRACY_ENABLE)
+endif()
 
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR}/include)

@@ -12,6 +12,9 @@
 #include <chrono>
 #include <cstring>
 #include <imgui.h>
+#if defined(TRACY_ENABLE)
+  #include <tracy/TracyVulkan.hpp>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -65,12 +68,21 @@ bool App::init_window() {
 }
 
 bool App::init_vulkan() {
+    CUBE_PROFILE_SCOPE_N("init_vulkan");
     if (!instance.init(false)) return false;
     if (!instance.create_surface(window, surface)) return false;
     if (!device.pick(instance.handle(), surface)) return false;
     if (!device.create(instance.handle(), surface, instance.validation_enabled())) return false;
     if (!create_swapchain()) return false;
     if (!frames.create(device.handle(), *device.queues().graphics, 2)) return false;
+
+#if defined(TRACY_ENABLE)
+    {
+        VkCommandBuffer cb = frames.beginSingleTimeCommands(device.handle(), *device.queues().graphics);
+        tracy_vk_ctx = TracyVkContext(device.physical(), device.handle(), device.graphics(), cb);
+        frames.endSingleTimeCommands(device.handle(), device.graphics(), cb);
+    }
+#endif
 
     // Initialize VMA
     VmaAllocatorCreateInfo allocatorInfo = {};
@@ -399,18 +411,26 @@ void App::main_loop() {
     int fps_frames = 0;
     double last_time = glfwGetTime();
     while (!glfwWindowShouldClose(window)) {
+        CUBE_PROFILE_FRAME();
+        CUBE_PROFILE_SCOPE_N("frame");
         double current_time = glfwGetTime();
         float delta_time = static_cast<float>(current_time - last_time);
         last_time = current_time;
 
-        glfwPollEvents();
+        {
+            CUBE_PROFILE_SCOPE_N("events");
+            glfwPollEvents();
+        }
         if (framebuffer_resized) {
             framebuffer_resized = false;
             recreate_swapchain();
         }
 
         // Update camera
-        update_camera(delta_time);
+        {
+            CUBE_PROFILE_SCOPE_N("update_camera");
+            update_camera(delta_time);
+        }
 
         // Handle console mouse capture
         if (show_console != prev_show_console) {
@@ -484,16 +504,26 @@ void App::main_loop() {
         std::memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
 
         FrameSync& frame = frames.current();
-        vkWaitForFences(device.handle(), 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
-        vkResetFences(device.handle(), 1, &frame.in_flight);
+        {
+            CUBE_PROFILE_SCOPE_N("wait_fence");
+            vkWaitForFences(device.handle(), 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
+            vkResetFences(device.handle(), 1, &frame.in_flight);
+        }
 
         uint32_t imageIndex = 0;
-        VkResult acq = vkAcquireNextImageKHR(device.handle(), swapchain.handle, UINT64_MAX, frame.image_available, VK_NULL_HANDLE, &imageIndex);
+        VkResult acq = VK_SUCCESS;
+        {
+            CUBE_PROFILE_SCOPE_N("acquire");
+            acq = vkAcquireNextImageKHR(device.handle(), swapchain.handle, UINT64_MAX, frame.image_available, VK_NULL_HANDLE, &imageIndex);
+        }
         if (acq == VK_ERROR_OUT_OF_DATE_KHR) { recreate_swapchain(); continue; }
         if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) continue;
 
-        vkResetCommandBuffer(frame.cmd, 0);
-        record_command(frame.cmd, imageIndex);
+        {
+            CUBE_PROFILE_SCOPE_N("record");
+            vkResetCommandBuffer(frame.cmd, 0);
+            record_command(frame.cmd, imageIndex);
+        }
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit{};
@@ -506,7 +536,10 @@ void App::main_loop() {
         submit.signalSemaphoreCount = 1;
         submit.pSignalSemaphores = &frame.render_finished;
 
-        if (vkQueueSubmit(device.graphics(), 1, &submit, frame.in_flight) != VK_SUCCESS) continue;
+        {
+            CUBE_PROFILE_SCOPE_N("submit");
+            if (vkQueueSubmit(device.graphics(), 1, &submit, frame.in_flight) != VK_SUCCESS) continue;
+        }
 
         VkPresentInfoKHR present{};
         present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -515,7 +548,11 @@ void App::main_loop() {
         present.swapchainCount = 1;
         present.pSwapchains = &swapchain.handle;
         present.pImageIndices = &imageIndex;
-        VkResult pres = vkQueuePresentKHR(device.present(), &present);
+        VkResult pres = VK_SUCCESS;
+        {
+            CUBE_PROFILE_SCOPE_N("present");
+            pres = vkQueuePresentKHR(device.present(), &present);
+        }
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR || framebuffer_resized) {
             framebuffer_resized = false;
             recreate_swapchain();
@@ -778,6 +815,13 @@ void App::update_camera(float delta_time) {
 void App::cleanup() {
     if (device.handle()) vkDeviceWaitIdle(device.handle());
 
+#if defined(TRACY_ENABLE)
+    if (tracy_vk_ctx) {
+        TracyVkDestroy((TracyVkCtx)tracy_vk_ctx);
+        tracy_vk_ctx = nullptr;
+    }
+#endif
+
     pipeline.destroy(device.handle());
     framebuffers.destroy(device.handle());
     render_pass.destroy(device.handle());
@@ -834,78 +878,97 @@ void App::cleanup() {
 }
 
 bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
+    CUBE_PROFILE_SCOPE_N("record_command");
     VkCommandBufferBeginInfo bi{};
     bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS) return false;
 
-    // Begin render pass (this handles layout transitions automatically)
-    std::array<VkClearValue, 2> clear_values{};
-    clear_values[0].color = {0.25f, 0.25f, 0.3f, 1.0f}; // Grayish background color
-    clear_values[1].depthStencil = {0.0f, 0};
+#if defined(TRACY_ENABLE)
+    TracyVkCtx vkctx = (TracyVkCtx)tracy_vk_ctx;
+#endif
 
-    VkRenderPassBeginInfo rp_bi{};
-    rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    rp_bi.renderPass = render_pass.handle;
-    rp_bi.framebuffer = framebuffers.framebuffers[imageIndex];
-    rp_bi.renderArea.offset = {0, 0};
-    rp_bi.renderArea.extent = swapchain.extent;
-    rp_bi.clearValueCount = static_cast<uint32_t>(clear_values.size());
-    rp_bi.pClearValues = clear_values.data();
+    {
+#if defined(TRACY_ENABLE)
+        TracyVkZone(vkctx, cmd, "main_pass");
+#endif
+        // Begin render pass (this handles layout transitions automatically)
+        std::array<VkClearValue, 2> clear_values{};
+        clear_values[0].color = {0.25f, 0.25f, 0.3f, 1.0f}; // Grayish background color
+        clear_values[1].depthStencil = {0.0f, 0};
 
-    vkCmdBeginRenderPass(cmd, &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
+        VkRenderPassBeginInfo rp_bi{};
+        rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rp_bi.renderPass = render_pass.handle;
+        rp_bi.framebuffer = framebuffers.framebuffers[imageIndex];
+        rp_bi.renderArea.offset = {0, 0};
+        rp_bi.renderArea.extent = swapchain.extent;
+        rp_bi.clearValueCount = static_cast<uint32_t>(clear_values.size());
+        rp_bi.pClearValues = clear_values.data();
 
-    // Bind pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+        vkCmdBeginRenderPass(cmd, &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
+        // Bind pipeline
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
 
-    // Bind vertex buffer
-    VkBuffer vertexBuffers[] = {vertexBuffer};
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
 
-    // Bind index buffer
-    vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        // Bind vertex buffer
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
 
-    // Set viewport and scissor
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchain.extent.width);
-    viewport.height = static_cast<float>(swapchain.extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
+        // Bind index buffer
+        vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapchain.extent;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
+        // Set viewport and scissor
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(swapchain.extent.width);
+        viewport.height = static_cast<float>(swapchain.extent.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-    // Draw quad using indices
-    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+        VkRect2D scissor{};
+        scissor.offset = {0, 0};
+        scissor.extent = swapchain.extent;
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    // End render pass (this handles layout transitions back to present automatically)
-    vkCmdEndRenderPass(cmd);
+        // Draw quad using indices
+        vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+        // End render pass (this handles layout transitions back to present automatically)
+        vkCmdEndRenderPass(cmd);
+    }
 
     // Render ImGui UI
-    imgui_layer.new_frame();
+    {
+#if defined(TRACY_ENABLE)
+        TracyVkZone(vkctx, cmd, "imgui");
+#endif
+        imgui_layer.new_frame();
 
-    DebugData debug_data{
-        fps,
-        frame_time_ms,
-        camera.position,
-        ram_used,
-        ram_total,
-        vram_used,
-        vram_total,
-        cpu_usage,
-        gpu_usage,
-        show_debug_overlay,
-        show_log_viewer
-    };
-    imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data, &console, &show_console, !show_console);
+        DebugData debug_data{
+            fps,
+            frame_time_ms,
+            camera.position,
+            ram_used,
+            ram_total,
+            vram_used,
+            vram_total,
+            cpu_usage,
+            gpu_usage,
+            show_debug_overlay,
+            show_log_viewer
+        };
+        imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data, &console, &show_console, !show_console);
+    }
+
+#if defined(TRACY_ENABLE)
+    TracyVkCollect(vkctx, cmd);
+#endif
 
     return vkEndCommandBuffer(cmd) == VK_SUCCESS;
 }

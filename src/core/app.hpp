@@ -20,6 +20,7 @@
 #include "render/pipeline.hpp"
 #include "render/imgui_layer.hpp"
 #include "console.hpp"
+#include "core/profile.hpp"
 
 class App {
 public:
@@ -130,6 +131,8 @@ private:
     VkBuffer uniformBuffer{};
     VmaAllocation uniformBufferAllocation{};
     void* uniformBufferMapped{};
+
+    void* tracy_vk_ctx{};
 
 };
 

@@ -30,7 +30,10 @@
     {
       "name": "profile",
       "displayName": "Profile",
-      "inherits": ["base"]
+      "inherits": ["base"],
+      "cacheVariables": {
+        "CUBE_TRACY": "ON"
+      }
     }
   ],
   "buildPresets": [
