@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <cstring>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -61,10 +62,71 @@ bool App::init_vulkan() {
         return false;
     }
 
+    VkDescriptorSetLayoutBinding ubo_binding{};
+    ubo_binding.binding = 0;
+    ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_binding.descriptorCount = 1;
+    ubo_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.bindingCount = 1;
+    layout_info.pBindings = &ubo_binding;
+    if (vkCreateDescriptorSetLayout(device.handle(), &layout_info, nullptr, &descriptor_set_layout) != VK_SUCCESS) return false;
+
+    VkDescriptorPoolSize pool_size{};
+    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_size.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.maxSets = 1;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = &pool_size;
+    if (vkCreateDescriptorPool(device.handle(), &pool_info, nullptr, &descriptor_pool) != VK_SUCCESS) return false;
+
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = descriptor_pool;
+    alloc_info.descriptorSetCount = 1;
+    alloc_info.pSetLayouts = &descriptor_set_layout;
+    if (vkAllocateDescriptorSets(device.handle(), &alloc_info, &descriptor_set) != VK_SUCCESS) return false;
+
+    VkBufferCreateInfo ubo_info{};
+    ubo_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    ubo_info.size = sizeof(UniformBufferObject);
+    ubo_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    ubo_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo ubo_alloc{};
+    ubo_alloc.usage = VMA_MEMORY_USAGE_AUTO;
+    ubo_alloc.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    if (vmaCreateBuffer(allocator, &ubo_info, &ubo_alloc, &uniformBuffer, &uniformBufferAllocation, nullptr) != VK_SUCCESS) {
+        std::cerr << "Failed to create uniform buffer" << std::endl;
+        return false;
+    }
+    vmaMapMemory(allocator, uniformBufferAllocation, &uniformBufferMapped);
+
+    VkDescriptorBufferInfo buffer_info{};
+    buffer_info.buffer = uniformBuffer;
+    buffer_info.offset = 0;
+    buffer_info.range = sizeof(UniformBufferObject);
+
+    VkWriteDescriptorSet write{};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet = descriptor_set;
+    write.dstBinding = 0;
+    write.dstArrayElement = 0;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    write.descriptorCount = 1;
+    write.pBufferInfo = &buffer_info;
+    vkUpdateDescriptorSets(device.handle(), 1, &write, 0, nullptr);
+
     // Initialize rendering components
     if (!shaders.create(device.handle())) return false;
     if (!render_pass.create(device.handle(), device.physical(), swapchain.format)) return false;
-    if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, swapchain.views, swapchain.extent)) return false;
+    if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, render_pass.depth_format, swapchain.views, swapchain.extent)) return false;
 
     // Load shaders from the build directory (where CMake places them)
     // Detect build configuration from executable path
@@ -234,10 +296,7 @@ bool App::init_vulkan() {
     // Clean up index staging buffer
     vmaDestroyBuffer(allocator, indexStagingBuffer, indexStagingBufferAllocation);
 
-    // Using push constants instead of UBO
-
-    // Create pipeline with push constants
-    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent)) return false;
+    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptor_set_layout)) return false;
 
     return true;
 }
@@ -258,7 +317,7 @@ bool App::recreate_swapchain() {
     swapchain.destroy(device.handle());
 
     if (!create_swapchain()) return false;
-    if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, swapchain.views, swapchain.extent)) return false;
+    if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, render_pass.depth_format, swapchain.views, swapchain.extent)) return false;
 
     return true;
 }
@@ -291,11 +350,9 @@ void App::main_loop() {
             fps_timer = now;
         }
 
-        // Check for shader hot reload
         if (shaders.hot_reload(device.handle())) {
             std::cout << "Shaders reloaded, recreating pipeline" << std::endl;
-            // Shaders were reloaded, recreate pipeline
-            pipeline.recreate(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent);
+            pipeline.recreate(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptor_set_layout);
         }
 
         // Prepare matrices for push constants
@@ -319,9 +376,16 @@ void App::main_loop() {
         glm::vec3 camera_up = glm::vec3(0.0f, 0.0f, 1.0f); // Z-up world
         ubo.view = glm::lookAt(camera.position, camera_target, camera_up);
 
-        // Perspective projection (task 2.8.1)
         float aspect = static_cast<float>(swapchain.extent.width) / static_cast<float>(swapchain.extent.height);
-        ubo.proj = glm::perspective(camera.fov, aspect, camera.near_plane, camera.far_plane);
+        float t = tan(camera.fov * 0.5f);
+        ubo.proj = glm::mat4(0.0f);
+        ubo.proj[0][0] = 1.0f / (aspect * t);
+        ubo.proj[1][1] = 1.0f / t;
+        ubo.proj[2][2] = 0.0f;
+        ubo.proj[2][3] = -1.0f;
+        ubo.proj[3][2] = camera.near_plane;
+
+        std::memcpy(uniformBufferMapped, &ubo, sizeof(ubo));
 
         FrameSync& frame = frames.current();
         vkWaitForFences(device.handle(), 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
@@ -333,7 +397,7 @@ void App::main_loop() {
         if (acq != VK_SUCCESS && acq != VK_SUBOPTIMAL_KHR) continue;
 
         vkResetCommandBuffer(frame.cmd, 0);
-        record_command(frame.cmd, imageIndex, swapchain.images[imageIndex], ubo);
+        record_command(frame.cmd, imageIndex);
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit{};
@@ -459,23 +523,37 @@ void App::cleanup() {
     render_pass.destroy(device.handle());
     shaders.destroy(device.handle());
 
-    // Destroy vertex buffer
+    if (uniformBufferMapped) {
+        vmaUnmapMemory(allocator, uniformBufferAllocation);
+        uniformBufferMapped = nullptr;
+    }
+    if (uniformBuffer) {
+        vmaDestroyBuffer(allocator, uniformBuffer, uniformBufferAllocation);
+        uniformBuffer = VK_NULL_HANDLE;
+        uniformBufferAllocation = VK_NULL_HANDLE;
+    }
+
+    if (descriptor_pool) {
+        vkDestroyDescriptorPool(device.handle(), descriptor_pool, nullptr);
+        descriptor_pool = VK_NULL_HANDLE;
+    }
+    if (descriptor_set_layout) {
+        vkDestroyDescriptorSetLayout(device.handle(), descriptor_set_layout, nullptr);
+        descriptor_set_layout = VK_NULL_HANDLE;
+    }
+
     if (vertexBuffer) {
         vmaDestroyBuffer(allocator, vertexBuffer, vertexBufferAllocation);
         vertexBuffer = VK_NULL_HANDLE;
         vertexBufferAllocation = VK_NULL_HANDLE;
     }
 
-    // Destroy index buffer
     if (indexBuffer) {
         vmaDestroyBuffer(allocator, indexBuffer, indexBufferAllocation);
         indexBuffer = VK_NULL_HANDLE;
         indexBufferAllocation = VK_NULL_HANDLE;
     }
 
-    // No UBO or descriptor sets to destroy (using push constants)
-
-    // Destroy VMA allocator
     if (allocator) {
         vmaDestroyAllocator(allocator);
         allocator = VK_NULL_HANDLE;
@@ -490,7 +568,7 @@ void App::cleanup() {
     glfwTerminate();
 }
 
-bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image, const UniformBufferObject& ubo) {
+bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
     VkCommandBufferBeginInfo bi{};
     bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -499,7 +577,7 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image
     // Begin render pass (this handles layout transitions automatically)
     std::array<VkClearValue, 2> clear_values{};
     clear_values[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
-    clear_values[1].depthStencil = {1.0f, 0};
+    clear_values[1].depthStencil = {0.0f, 0};
 
     VkRenderPassBeginInfo rp_bi{};
     rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -515,8 +593,7 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image
     // Bind pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
 
-    // Push constants
-    vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UniformBufferObject), &ubo);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptor_set, 0, nullptr);
 
     // Bind vertex buffer
     VkBuffer vertexBuffers[] = {vertexBuffer};

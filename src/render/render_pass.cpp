@@ -96,12 +96,12 @@ VkFormat RenderPassContext::find_depth_format(VkPhysicalDevice physical_device) 
 }
 
 bool FramebufferContext::create(VkDevice device, VkPhysicalDevice physical_device, VkRenderPass render_pass,
-                               const std::vector<VkImageView>& color_views, VkExtent2D extent) {
+                               VkFormat depth_format, const std::vector<VkImageView>& color_views, VkExtent2D extent) {
     // Create depth image
     VkImageCreateInfo depth_ci{};
     depth_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     depth_ci.imageType = VK_IMAGE_TYPE_2D;
-    depth_ci.format = VK_FORMAT_D32_SFLOAT; // We'll use D32_SFLOAT for simplicity
+    depth_ci.format = depth_format;
     depth_ci.extent = {extent.width, extent.height, 1};
     depth_ci.mipLevels = 1;
     depth_ci.arrayLayers = 1;
@@ -149,7 +149,7 @@ bool FramebufferContext::create(VkDevice device, VkPhysicalDevice physical_devic
     view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_ci.image = depth_image;
     view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_ci.format = VK_FORMAT_D32_SFLOAT;
+    view_ci.format = depth_format;
     view_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     view_ci.subresourceRange.levelCount = 1;
     view_ci.subresourceRange.layerCount = 1;

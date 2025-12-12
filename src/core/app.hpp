@@ -26,7 +26,7 @@ private:
     void main_loop();
     void cleanup();
 
-    bool record_command(VkCommandBuffer cmd, uint32_t imageIndex, VkImage image, const UniformBufferObject& ubo);
+    bool record_command(VkCommandBuffer cmd, uint32_t imageIndex);
 
     // Input handling
     static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
@@ -46,6 +46,10 @@ private:
     FramebufferContext framebuffers;
     GraphicsPipelineContext pipeline;
 
+    VkDescriptorSetLayout descriptor_set_layout{};
+    VkDescriptorPool descriptor_pool{};
+    VkDescriptorSet descriptor_set{};
+
     ShaderManager::ShaderModule* vert_shader{};
     ShaderManager::ShaderModule* frag_shader{};
 
@@ -56,8 +60,8 @@ private:
         float yaw{0.0f};
         float pitch{-1.57079632679f}; // Look down at origin (-π/2)
         float fov{glm::radians(45.0f)};
-        float near_plane{0.1f};
-        float far_plane{100.0f}; // Normal depth for now
+        float near_plane{1.0f};
+        float far_plane{0.0f};
         bool mouse_captured{false};
     } camera;
 
@@ -78,7 +82,9 @@ private:
     VmaAllocation vertexBufferAllocation{};
     VkBuffer indexBuffer{};
     VmaAllocation indexBufferAllocation{};
+    VkBuffer uniformBuffer{};
+    VmaAllocation uniformBufferAllocation{};
+    void* uniformBufferMapped{};
 
-    // Using push constants instead of UBO
 };
 

@@ -6,6 +6,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+find_program(CCACHE_PROGRAM ccache)
+if (CCACHE_PROGRAM)
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+endif()
+
+if (MSVC)
+  add_compile_options(/MP)
+endif()
+
+option(CUBE_UNITY_BUILD "Enable unity/jumbo build for faster compiles" ON)
+
 include(FetchContent)
 
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -75,6 +86,10 @@ add_executable(cube
   ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
   ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv
 )
+
+if (CUBE_UNITY_BUILD)
+  set_target_properties(cube PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 8)
+endif()
 
 target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan VulkanMemoryAllocator glm::glm)
 

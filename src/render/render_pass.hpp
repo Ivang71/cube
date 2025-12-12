@@ -22,6 +22,6 @@ struct FramebufferContext {
     VkImageView depth_view{};
 
     bool create(VkDevice device, VkPhysicalDevice physical_device, VkRenderPass render_pass,
-                const std::vector<VkImageView>& color_views, VkExtent2D extent);
+                VkFormat depth_format, const std::vector<VkImageView>& color_views, VkExtent2D extent);
     void destroy(VkDevice device);
 };
