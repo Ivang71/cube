@@ -191,7 +191,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 3.1.6 | Render ImGui demo window | **Demo window visible** |
 | 3.1.7 | Style ImGui (dark theme) | Looks good |
 
-### 3.2 Debug Overlay
+### 3.2 Debug Overlay ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 3.2.1 | Create overlay window (corner) | Window in corner |

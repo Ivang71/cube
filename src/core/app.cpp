@@ -137,6 +137,10 @@ bool App::init_vulkan() {
         return false;
     }
 
+    // Initialize debug stats
+    update_debug_stats();
+    last_debug_stats_update = glfwGetTime();
+
     // Create ImGui framebuffers
     if (!imgui_layer.create_framebuffers(device.handle(), swapchain.views, swapchain.extent)) return false;
 
@@ -354,9 +358,19 @@ void App::main_loop() {
         // Update camera
         update_camera(delta_time);
 
+        // Update debug stats every 0.3 seconds
+        if (current_time - last_debug_stats_update >= DEBUG_STATS_UPDATE_INTERVAL) {
+            update_debug_stats();
+            last_debug_stats_update = current_time;
+        }
+
+        // Update debug metrics
+        frame_time_ms = delta_time * 1000.0f;
+
         fps_frames++;
         double now = glfwGetTime();
         if (now - fps_timer >= 1.0) {
+            fps = static_cast<float>(fps_frames);
             char title[64];
             std::snprintf(title, sizeof(title), "cube %dfps", fps_frames);
             glfwSetWindowTitle(window, title);
@@ -452,6 +466,7 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
             case GLFW_KEY_A: app->input.a_pressed = true; break;
             case GLFW_KEY_S: app->input.s_pressed = true; break;
             case GLFW_KEY_D: app->input.d_pressed = true; break;
+            case GLFW_KEY_F3: app->show_debug_overlay = !app->show_debug_overlay; break;
             case GLFW_KEY_ESCAPE:
                 app->camera.mouse_captured = !app->camera.mouse_captured;
                 glfwSetInputMode(window, GLFW_CURSOR,
@@ -506,6 +521,130 @@ void App::mouse_button_callback(GLFWwindow* window, int button, int action, int 
         app->camera.mouse_captured = !app->camera.mouse_captured;
         glfwSetInputMode(window, GLFW_CURSOR,
             app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+    }
+}
+
+float App::get_cpu_usage() {
+#ifdef _WIN32
+    FILETIME idle_time, kernel_time, user_time;
+
+    if (GetSystemTimes(&idle_time, &kernel_time, &user_time)) {
+        if (!cpu_initialized) {
+            // First call - just store the values
+            prev_idle_time = idle_time;
+            prev_kernel_time = kernel_time;
+            prev_user_time = user_time;
+            cpu_initialized = true;
+            return 0.0f;
+        }
+
+        // Calculate differences
+        ULARGE_INTEGER prev_idle, curr_idle;
+        prev_idle.LowPart = prev_idle_time.dwLowDateTime;
+        prev_idle.HighPart = prev_idle_time.dwHighDateTime;
+
+        ULARGE_INTEGER prev_kernel, curr_kernel;
+        prev_kernel.LowPart = prev_kernel_time.dwLowDateTime;
+        prev_kernel.HighPart = prev_kernel_time.dwHighDateTime;
+
+        ULARGE_INTEGER prev_user, curr_user;
+        prev_user.LowPart = prev_user_time.dwLowDateTime;
+        prev_user.HighPart = prev_user_time.dwHighDateTime;
+
+        curr_idle.LowPart = idle_time.dwLowDateTime;
+        curr_idle.HighPart = idle_time.dwHighDateTime;
+
+        curr_kernel.LowPart = kernel_time.dwLowDateTime;
+        curr_kernel.HighPart = kernel_time.dwHighDateTime;
+
+        curr_user.LowPart = user_time.dwLowDateTime;
+        curr_user.HighPart = user_time.dwHighDateTime;
+
+        // Calculate deltas
+        ULONGLONG idle_delta = curr_idle.QuadPart - prev_idle.QuadPart;
+        ULONGLONG kernel_delta = curr_kernel.QuadPart - prev_kernel.QuadPart;
+        ULONGLONG user_delta = curr_user.QuadPart - prev_user.QuadPart;
+        ULONGLONG total_delta = kernel_delta + user_delta;
+
+        // Store current values for next call
+        prev_idle_time = idle_time;
+        prev_kernel_time = kernel_time;
+        prev_user_time = user_time;
+
+        // Calculate CPU usage percentage
+        if (total_delta > 0) {
+            float usage = 100.0f * (1.0f - (float)idle_delta / (float)total_delta);
+            return usage;
+        }
+    }
+#endif
+    return 0.0f;
+}
+
+float App::get_gpu_usage() {
+#ifdef _WIN32
+    static PDH_HQUERY query = NULL;
+    static PDH_HCOUNTER counter = NULL;
+    static bool initialized = false;
+
+    if (!initialized) {
+        if (PdhOpenQueryW(NULL, 0, &query) == ERROR_SUCCESS) {
+            // Try to get GPU usage counter
+            if (PdhAddCounterW(query, L"\\GPU Engine(*engtype_3D)\\Utilization Percentage", 0, &counter) == ERROR_SUCCESS) {
+                initialized = true;
+            } else {
+                // Fallback: try a different counter
+                PdhAddCounterW(query, L"\\GPU Engine(*)\\Utilization Percentage", 0, &counter);
+                initialized = true;
+            }
+        }
+    }
+
+    if (initialized && query && counter) {
+        PDH_FMT_COUNTERVALUE value;
+        if (PdhCollectQueryData(query) == ERROR_SUCCESS &&
+            PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, NULL, &value) == ERROR_SUCCESS) {
+            return (float)value.doubleValue;
+        }
+    }
+#endif
+    return 0.0f;
+}
+
+void App::update_debug_stats() {
+    // Update CPU and GPU usage
+    cpu_usage = get_cpu_usage();
+    gpu_usage = get_gpu_usage();
+
+    // Get system RAM information
+#ifdef _WIN32
+    MEMORYSTATUSEX memStatus;
+    memStatus.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&memStatus)) {
+        ram_used = memStatus.ullTotalPhys - memStatus.ullAvailPhys;
+        ram_total = memStatus.ullTotalPhys;
+    }
+#endif
+
+    // Get VRAM information from VMA (only device-local heaps)
+    if (allocator) {
+        // Get memory properties to identify device-local heaps
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(device.physical(), &memProperties);
+
+        VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+        vmaGetHeapBudgets(allocator, budgets);
+
+        vram_used = 0;
+        vram_total = 0;
+
+        for (uint32_t i = 0; i < memProperties.memoryHeapCount; ++i) {
+            // Only count device-local heaps (GPU memory)
+            if (memProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                vram_used += budgets[i].usage;
+                vram_total += budgets[i].budget;
+            }
+        }
     }
 }
 
@@ -657,7 +796,20 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
 
     // Render ImGui UI
     imgui_layer.new_frame();
-    imgui_layer.render(cmd, imageIndex, swapchain.extent);
+
+    DebugData debug_data{
+        fps,
+        frame_time_ms,
+        camera.position,
+        ram_used,
+        ram_total,
+        vram_used,
+        vram_total,
+        cpu_usage,
+        gpu_usage,
+        show_debug_overlay
+    };
+    imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data);
 
     return vkEndCommandBuffer(cmd) == VK_SUCCESS;
 }

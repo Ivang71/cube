@@ -6,6 +6,20 @@
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
+#include <glm/glm.hpp>
+
+struct DebugData {
+    float fps;
+    float frame_time_ms;
+    glm::vec3 camera_position;
+    size_t ram_used;
+    size_t ram_total;
+    size_t vram_used;
+    size_t vram_total;
+    float cpu_usage;
+    float gpu_usage;
+    bool show_overlay;
+};
 
 class ImGuiLayer {
 public:
@@ -21,7 +35,7 @@ public:
     void destroy_framebuffers(VkDevice device);
 
     void new_frame();
-    void render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent);
+    void render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data);
 
     bool recreate_swapchain(VkDevice device, const std::vector<VkImageView>& image_views, VkExtent2D extent);
 

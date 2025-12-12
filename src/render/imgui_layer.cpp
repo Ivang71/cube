@@ -1,6 +1,22 @@
 #include "imgui_layer.hpp"
 #include <iostream>
 #include <array>
+#include <string>
+
+std::string format_memory(size_t bytes) {
+    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+    int unit_index = 0;
+    double value = static_cast<double>(bytes);
+
+    while (value >= 1024.0 && unit_index < 4) {
+        value /= 1024.0;
+        unit_index++;
+    }
+
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.1f %s", value, units[unit_index]);
+    return std::string(buffer);
+}
 
 bool ImGuiLayer::init(VkDevice device, VkPhysicalDevice physical_device, VkInstance instance,
                       VkQueue graphics_queue, uint32_t graphics_queue_family,
@@ -193,9 +209,62 @@ void ImGuiLayer::new_frame() {
     ImGui::NewFrame();
 }
 
-void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent) {
-    // Show demo window
-    ImGui::ShowDemoWindow();
+void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data) {
+    // Show debug overlay if enabled
+    if (debug_data.show_overlay) {
+        // Style the window background and remove borders
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.7f)); // Black with 30% opacity
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f); // No border
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f)); // Add some padding
+
+        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Debug Overlay", nullptr,
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoFocusOnAppearing |
+            ImGuiWindowFlags_NoNav |
+            ImGuiWindowFlags_NoInputs);
+
+        // Make font bigger for better legibility
+        ImGui::SetWindowFontScale(1.2f);
+
+        ImGui::Text("FPS: %.1f", debug_data.fps);
+        ImGui::Text("Frame Time: %.2f ms", debug_data.frame_time_ms);
+        ImGui::Text("CPU: %.1f%%", debug_data.cpu_usage);
+        ImGui::Text("GPU: %.1f%%", debug_data.gpu_usage);
+        ImGui::Text("Camera: (%.2f, %.2f, %.2f)",
+            debug_data.camera_position.x,
+            debug_data.camera_position.y,
+            debug_data.camera_position.z);
+
+        // RAM display
+        if (debug_data.ram_total > 0) {
+            std::string ram_used_str = format_memory(debug_data.ram_used);
+            std::string ram_total_str = format_memory(debug_data.ram_total);
+            float ram_load_percent = (static_cast<float>(debug_data.ram_used) / static_cast<float>(debug_data.ram_total)) * 100.0f;
+            ImGui::Text("RAM: %s / %s (%.1f%%)", ram_used_str.c_str(), ram_total_str.c_str(), ram_load_percent);
+        } else {
+            ImGui::Text("RAM: N/A");
+        }
+
+        // VRAM display
+        if (debug_data.vram_total > 0) {
+            std::string vram_used_str = format_memory(debug_data.vram_used);
+            std::string vram_total_str = format_memory(debug_data.vram_total);
+            float vram_load_percent = (static_cast<float>(debug_data.vram_used) / static_cast<float>(debug_data.vram_total)) * 100.0f;
+            ImGui::Text("VRAM: %s / %s (%.1f%%)", vram_used_str.c_str(), vram_total_str.c_str(), vram_load_percent);
+        } else {
+            ImGui::Text("VRAM: N/A");
+        }
+
+        ImGui::End();
+
+        // Pop the style changes
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(1);
+    }
 
     // Render ImGui
     ImGui::Render();
