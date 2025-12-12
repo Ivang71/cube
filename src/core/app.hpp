@@ -13,6 +13,7 @@
 #include "render/shader.hpp"
 #include "render/render_pass.hpp"
 #include "render/pipeline.hpp"
+#include "render/imgui_layer.hpp"
 
 class App {
 public:
@@ -31,6 +32,7 @@ private:
     // Input handling
     static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos);
+    static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
     void update_camera(float delta_time);
 
     GLFWwindow* window{};
@@ -52,6 +54,10 @@ private:
 
     ShaderManager::ShaderModule* vert_shader{};
     ShaderManager::ShaderModule* frag_shader{};
+
+    // ImGui
+    ImGuiLayer imgui_layer;
+    FramebufferContext imgui_framebuffers;
 
     // Camera state
     struct Camera {

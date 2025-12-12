@@ -20,7 +20,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 |------|------|--------------|
 | 1.2.1 | Add GLFW via FetchContent or submodule | CMake finds GLFW |
 | 1.2.2 | Initialize GLFW in main | No crash, returns success |
-| 1.2.3 | Create 1280x720 window with title | Window appears on screen |
+| 1.2.3 | Create 1600x900 window with title | Window appears on screen |
 | 1.2.4 | Add main loop with glfwPollEvents | Window stays open, responds to close |
 | 1.2.5 | Handle window resize callback | Print new size on resize |
 | 1.2.6 | Add frame timing (delta time) | Print FPS to console each second |
@@ -180,7 +180,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 
 ## Stage 3: Debug Infrastructure
 
-### 3.1 ImGui Integration
+### 3.1 ImGui Integration ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 3.1.1 | Add Dear ImGui dependency | CMake finds it |

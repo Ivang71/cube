@@ -10,6 +10,7 @@
 #include <string>
 #include <chrono>
 #include <cstring>
+#include <imgui.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -30,7 +31,7 @@ int App::run() {
 bool App::init_window() {
     if (!glfwInit()) return false;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window = glfwCreateWindow(1280, 720, "cube", nullptr, nullptr);
+    window = glfwCreateWindow(1600, 900, "cube", nullptr, nullptr);
     if (!window) return false;
     glfwSetWindowUserPointer(window, this);
     glfwSetWindowSizeCallback(window, [](GLFWwindow* win, int, int) {
@@ -38,6 +39,7 @@ bool App::init_window() {
     });
     glfwSetKeyCallback(window, key_callback);
     glfwSetCursorPosCallback(window, cursor_pos_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     camera.mouse_captured = true;
     glfwFocusWindow(window); // Ensure window has focus for input
@@ -127,6 +129,16 @@ bool App::init_vulkan() {
     if (!shaders.create(device.handle())) return false;
     if (!render_pass.create(device.handle(), device.physical(), swapchain.format)) return false;
     if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, render_pass.depth_format, swapchain.views, swapchain.extent)) return false;
+
+    // Initialize ImGui
+    if (!imgui_layer.init(device.handle(), device.physical(), instance.handle(),
+                         device.graphics(), *device.queues().graphics,
+                         swapchain.format, swapchain.extent, window, static_cast<uint32_t>(swapchain.images.size()))) {
+        return false;
+    }
+
+    // Create ImGui framebuffers
+    if (!imgui_layer.create_framebuffers(device.handle(), swapchain.views, swapchain.extent)) return false;
 
     // Load shaders from the build directory (where CMake places them)
     // Detect build configuration from executable path
@@ -314,10 +326,12 @@ bool App::recreate_swapchain() {
     vkDeviceWaitIdle(device.handle());
 
     framebuffers.destroy(device.handle());
+    imgui_layer.destroy_framebuffers(device.handle());
     swapchain.destroy(device.handle());
 
     if (!create_swapchain()) return false;
     if (!framebuffers.create(device.handle(), device.physical(), render_pass.handle, render_pass.depth_format, swapchain.views, swapchain.extent)) return false;
+    if (!imgui_layer.recreate_swapchain(device.handle(), swapchain.views, swapchain.extent)) return false;
 
     return true;
 }
@@ -481,6 +495,20 @@ void App::cursor_pos_callback(GLFWwindow* window, double xpos, double ypos) {
     app->camera.pitch = glm::clamp(app->camera.pitch, -glm::pi<float>()/2.0f + 0.1f, glm::pi<float>()/2.0f - 0.1f);
 }
 
+void App::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
+
+    // If ImGui wants to capture mouse input, let it handle the event
+    if (ImGui::GetIO().WantCaptureMouse) return;
+
+    // Toggle mouse capture on left mouse button click
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        app->camera.mouse_captured = !app->camera.mouse_captured;
+        glfwSetInputMode(window, GLFW_CURSOR,
+            app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+    }
+}
+
 void App::update_camera(float delta_time) {
     // Movement parameters
     const float max_speed = 3.0f;
@@ -522,6 +550,9 @@ void App::cleanup() {
     framebuffers.destroy(device.handle());
     render_pass.destroy(device.handle());
     shaders.destroy(device.handle());
+
+    // Shutdown ImGui (this destroys the render pass too)
+    imgui_layer.shutdown(device.handle());
 
     if (uniformBufferMapped) {
         vmaUnmapMemory(allocator, uniformBufferAllocation);
@@ -623,6 +654,10 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
 
     // End render pass (this handles layout transitions back to present automatically)
     vkCmdEndRenderPass(cmd);
+
+    // Render ImGui UI
+    imgui_layer.new_frame();
+    imgui_layer.render(cmd, imageIndex, swapchain.extent);
 
     return vkEndCommandBuffer(cmd) == VK_SUCCESS;
 }

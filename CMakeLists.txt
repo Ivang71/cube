@@ -49,6 +49,26 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vma)
 
+# Dear ImGui
+FetchContent_Declare(
+  imgui
+  URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.5.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(imgui)
+
+add_library(imgui_lib STATIC
+  ${imgui_SOURCE_DIR}/imgui.cpp
+  ${imgui_SOURCE_DIR}/imgui_demo.cpp
+  ${imgui_SOURCE_DIR}/imgui_draw.cpp
+  ${imgui_SOURCE_DIR}/imgui_tables.cpp
+  ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+)
+target_include_directories(imgui_lib PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_link_libraries(imgui_lib PUBLIC glfw Vulkan::Vulkan)
+
 # Compile shaders
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
@@ -81,6 +101,8 @@ add_executable(cube
   src/render/render_pass.hpp
   src/render/pipeline.cpp
   src/render/pipeline.hpp
+  src/render/imgui_layer.cpp
+  src/render/imgui_layer.hpp
   src/render/types.hpp
   src/main.cpp
   ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
@@ -92,5 +114,6 @@ if (CUBE_UNITY_BUILD)
 endif()
 
 target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan VulkanMemoryAllocator glm::glm)
+target_link_libraries(cube PRIVATE imgui_lib)
 
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR}/include)
