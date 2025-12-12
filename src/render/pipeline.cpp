@@ -4,7 +4,7 @@
 #include <iostream>
 #include <array>
 
-bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, VkShaderModule vert_shader, VkShaderModule frag_shader, VkExtent2D extent) {
+bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, VkShaderModule vert_shader, VkShaderModule frag_shader, VkExtent2D extent, VkDescriptorSetLayout descriptor_set_layout) {
     // Create pipeline cache
     VkPipelineCacheCreateInfo cache_ci{};
     cache_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -71,8 +71,8 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
     // Depth stencil
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depth_stencil.depthTestEnable = VK_TRUE;
-    depth_stencil.depthWriteEnable = VK_TRUE;
+    depth_stencil.depthTestEnable = VK_FALSE;
+    depth_stencil.depthWriteEnable = VK_FALSE;
     depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
     depth_stencil.depthBoundsTestEnable = VK_FALSE;
     depth_stencil.stencilTestEnable = VK_FALSE;
@@ -99,9 +99,13 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
     dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
     dynamic_state.pDynamicStates = dynamic_states.data();
 
-    // Pipeline layout (empty for now)
+    // Pipeline layout
     VkPipelineLayoutCreateInfo layout_ci{};
     layout_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    if (descriptor_set_layout != VK_NULL_HANDLE) {
+        layout_ci.setLayoutCount = 1;
+        layout_ci.pSetLayouts = &descriptor_set_layout;
+    }
 
     if (vkCreatePipelineLayout(device, &layout_ci, nullptr, &layout) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline layout" << std::endl;
@@ -134,13 +138,13 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
     return true;
 }
 
-bool GraphicsPipelineContext::recreate(VkDevice device, VkRenderPass render_pass, VkShaderModule vert_shader, VkShaderModule frag_shader, VkExtent2D extent) {
+bool GraphicsPipelineContext::recreate(VkDevice device, VkRenderPass render_pass, VkShaderModule vert_shader, VkShaderModule frag_shader, VkExtent2D extent, VkDescriptorSetLayout descriptor_set_layout) {
     // Destroy existing pipeline
     if (handle) vkDestroyPipeline(device, handle, nullptr);
     handle = VK_NULL_HANDLE;
 
     // Recreate pipeline with new shaders
-    return create(device, render_pass, vert_shader, frag_shader, extent);
+    return create(device, render_pass, vert_shader, frag_shader, extent, descriptor_set_layout);
 }
 
 void GraphicsPipelineContext::destroy(VkDevice device) {

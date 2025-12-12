@@ -11,7 +11,11 @@
       "hidden": true,
       "generator": "Visual Studio 18 2026",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "architecture": "x64"
+      "architecture": "x64",
+      "cacheVariables": {
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "CMAKE_POLICY_DEFAULT_CMP0077": "NEW"
+      }
     },
     {
       "name": "debug",

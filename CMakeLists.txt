@@ -22,6 +22,14 @@ FetchContent_MakeAvailable(glfw)
 
 find_package(Vulkan REQUIRED)
 
+# GLM (OpenGL Mathematics)
+FetchContent_Declare(
+  glm
+  URL https://github.com/g-truc/glm/archive/refs/tags/0.9.9.8.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(glm)
+
 # VMA (Vulkan Memory Allocator)
 FetchContent_Declare(
   vma
@@ -68,6 +76,6 @@ add_executable(cube
   ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv
 )
 
-target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan VulkanMemoryAllocator)
+target_link_libraries(cube PRIVATE glfw Vulkan::Vulkan VulkanMemoryAllocator glm::glm)
 
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR}/include)

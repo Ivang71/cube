@@ -143,7 +143,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.5.7 | Bind vertex buffer in draw | Buffer bound |
 | 2.5.8 | Draw using buffer data | **Triangle from buffer visible** |
 
-### 2.6 Index Buffers
+### 2.6 Index Buffers ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.6.1 | Create index buffer (staging + device) | Buffer created |
@@ -151,7 +151,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 2.6.3 | Bind index buffer | Buffer bound |
 | 2.6.4 | Use vkCmdDrawIndexed | **Indexed quad visible** |
 
-### 2.7 Uniform Buffers
+### 2.7 Uniform Buffers ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 2.7.1 | Create uniform buffer (host-visible) | Buffer created |

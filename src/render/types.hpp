@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 struct QueueFamilies {
     std::optional<uint32_t> graphics;
@@ -43,5 +44,11 @@ struct Vertex {
 
         return attributeDescriptions;
     }
+};
+
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 

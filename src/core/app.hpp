@@ -48,5 +48,14 @@ private:
     VmaAllocator allocator{};
     VkBuffer vertexBuffer{};
     VmaAllocation vertexBufferAllocation{};
+    VkBuffer indexBuffer{};
+    VmaAllocation indexBufferAllocation{};
+
+    // Uniform buffer
+    VkBuffer uniformBuffer{};
+    VmaAllocation uniformBufferAllocation{};
+    VkDescriptorSetLayout descriptorSetLayout{};
+    VkDescriptorPool descriptorPool{};
+    VkDescriptorSet descriptorSet{};
 };
 
