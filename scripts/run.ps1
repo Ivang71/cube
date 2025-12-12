@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Run build and fail fast on non-zero exit code
-& cmake --build --preset $preset
+& cmake --build --preset $preset -- /maxcpucount
 if ($LASTEXITCODE -ne 0) {
     Write-Error "cmake --build --preset $preset failed (exit code $LASTEXITCODE). Not running the executable."
     exit $LASTEXITCODE
