@@ -40,7 +40,7 @@ private:
     FramebufferContext framebuffers;
     GraphicsPipelineContext pipeline;
 
-    VkShaderModule vert_shader{};
-    VkShaderModule frag_shader{};
+    ShaderManager::ShaderModule* vert_shader{};
+    ShaderManager::ShaderModule* frag_shader{};
 };
 

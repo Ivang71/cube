@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include <cstdio>
+#include <iostream>
 #include <cmath>
 #include <array>
 #include <filesystem>
@@ -79,15 +80,19 @@ bool App::init_vulkan() {
 
     // Construct shader paths relative to executable location
     std::filesystem::path shader_dir = exe_path.parent_path().parent_path() / "shaders";
-    std::filesystem::path vert_path = shader_dir / "triangle.vert.spv";
-    std::filesystem::path frag_path = shader_dir / "triangle.frag.spv";
+    std::filesystem::path vert_spirv_path = shader_dir / "triangle.vert.spv";
+    std::filesystem::path frag_spirv_path = shader_dir / "triangle.frag.spv";
 
-    vert_shader = shaders.load_vertex(device.handle(), vert_path.string());
-    frag_shader = shaders.load_fragment(device.handle(), frag_path.string());
-    if (!vert_shader || !frag_shader) return false;
+    // Source paths relative to project root
+    std::filesystem::path project_root = exe_path.parent_path().parent_path().parent_path().parent_path();
+    std::filesystem::path vert_source_path = project_root / "shaders" / "triangle.vert";
+    std::filesystem::path frag_source_path = project_root / "shaders" / "triangle.frag";
+
+    vert_shader = shaders.load_vertex(device.handle(), vert_source_path, vert_spirv_path);
+    frag_shader = shaders.load_fragment(device.handle(), frag_source_path, frag_spirv_path);
     if (!vert_shader || !frag_shader) return false;
 
-    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader, frag_shader, swapchain.extent)) return false;
+    if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent)) return false;
 
     return true;
 }
@@ -130,6 +135,13 @@ void App::main_loop() {
             glfwSetWindowTitle(window, title);
             fps_frames = 0;
             fps_timer = now;
+        }
+
+        // Check for shader hot reload
+        if (shaders.hot_reload(device.handle())) {
+            std::cout << "Shaders reloaded, recreating pipeline" << std::endl;
+            // Shaders were reloaded, recreate pipeline
+            pipeline.recreate(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent);
         }
 
         FrameSync& frame = frames.current();
@@ -177,8 +189,6 @@ void App::cleanup() {
     if (device.handle()) vkDeviceWaitIdle(device.handle());
 
     pipeline.destroy(device.handle());
-    if (frag_shader) vkDestroyShaderModule(device.handle(), frag_shader, nullptr);
-    if (vert_shader) vkDestroyShaderModule(device.handle(), vert_shader, nullptr);
     framebuffers.destroy(device.handle());
     render_pass.destroy(device.handle());
     shaders.destroy(device.handle());

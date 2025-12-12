@@ -126,6 +126,15 @@ bool GraphicsPipelineContext::create(VkDevice device, VkRenderPass render_pass, 
     return true;
 }
 
+bool GraphicsPipelineContext::recreate(VkDevice device, VkRenderPass render_pass, VkShaderModule vert_shader, VkShaderModule frag_shader, VkExtent2D extent) {
+    // Destroy existing pipeline
+    if (handle) vkDestroyPipeline(device, handle, nullptr);
+    handle = VK_NULL_HANDLE;
+
+    // Recreate pipeline with new shaders
+    return create(device, render_pass, vert_shader, frag_shader, extent);
+}
+
 void GraphicsPipelineContext::destroy(VkDevice device) {
     if (handle) vkDestroyPipeline(device, handle, nullptr);
     if (layout) vkDestroyPipelineLayout(device, layout, nullptr);
