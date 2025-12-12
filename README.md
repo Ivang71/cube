@@ -11,3 +11,8 @@ run with elevated privilliges
 ```
 
 
+testing math
+```powershell
+cmake --build --preset debug --target cube_tests
+.\build\debug\Debug\cube_tests.exe
+```

@@ -139,3 +139,9 @@ if (CUBE_TRACY)
 endif()
 
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR}/include)
+
+add_executable(cube_tests
+  tests/math_tests.cpp
+)
+target_link_libraries(cube_tests PRIVATE glm::glm)
+target_include_directories(cube_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

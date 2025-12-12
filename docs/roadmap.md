@@ -241,7 +241,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 ### 4.1 Math Library
 | Step | Task | Verification |
 |------|------|--------------|
-| 4.1.1 | Add cglm dependency | Links correctly |
+| 4.1.1 | Use glm dependency | Links correctly |
 | 4.1.2 | Create math types header | Types accessible |
 | 4.1.3 | Verify mat4 multiplication | Test against known result |
 | 4.1.4 | Verify perspective projection | Test against known result |

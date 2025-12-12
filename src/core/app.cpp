@@ -19,10 +19,7 @@
 #include <windows.h>
 #endif
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "math/math.hpp"
 
 static std::filesystem::path exe_dir() {
 #ifdef _WIN32
