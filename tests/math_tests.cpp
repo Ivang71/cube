@@ -18,6 +18,7 @@ static int fail(int code, const char* what) {
 
 int run_memory_tests();
 int run_job_tests();
+int run_voxel_tests();
 
 int main() {
     using namespace cube::math;
@@ -125,6 +126,7 @@ int main() {
 
     if (int r = run_memory_tests(); r != 0) return r;
     if (int r = run_job_tests(); r != 0) return r;
+    if (int r = run_voxel_tests(); r != 0) return r;
 
     std::puts("cube_tests: OK");
     return 0;

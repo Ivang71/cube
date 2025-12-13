@@ -113,6 +113,12 @@ add_executable(cube
   src/memory/linear_allocator.hpp
   src/memory/pool_allocator.hpp
   src/memory/stack_allocator.hpp
+  src/voxel/blocks.cpp
+  src/voxel/blocks.hpp
+  src/voxel/chunk.cpp
+  src/voxel/chunk.hpp
+  src/voxel/chunk_manager.cpp
+  src/voxel/chunk_manager.hpp
   src/render/vk_instance.cpp
   src/render/vk_instance.hpp
   src/render/vk_device.cpp
@@ -156,8 +162,12 @@ add_executable(cube_tests
   tests/math_tests.cpp
   tests/memory_tests.cpp
   tests/job_tests.cpp
+  tests/voxel_tests.cpp
   src/core/log.cpp
   src/core/job_system.cpp
+  src/voxel/blocks.cpp
+  src/voxel/chunk.cpp
+  src/voxel/chunk_manager.cpp
 )
 target_link_libraries(cube_tests PRIVATE glm::glm)
 target_include_directories(cube_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

@@ -3,14 +3,31 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <cstdlib>
+#include <cstdint>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+bool ShaderManager::runtime_compile_enabled() {
+    const char* v = std::getenv("CUBE_SHADER_COMPILE");
+    if (!v) return true;
+    return !(v[0] == '0' && v[1] == '\0');
+}
 
 bool ShaderManager::ShaderModule::create(VkDevice device, const std::filesystem::path& source, const std::filesystem::path& spirv) {
     source_path = source;
     spirv_path = spirv;
 
-    // Ensure SPIR-V is up to date
-    if (!ShaderManager::compile_glsl_to_spirv(source_path, spirv_path)) {
-        return false;
+    if (ShaderManager::runtime_compile_enabled()) {
+        bool need = false;
+        if (!std::filesystem::exists(spirv_path)) need = true;
+        else if (std::filesystem::exists(source_path) && std::filesystem::last_write_time(source_path) > std::filesystem::last_write_time(spirv_path)) need = true;
+        if (need) {
+            if (!ShaderManager::compile_glsl_to_spirv(source_path, spirv_path, 5000)) {
+                std::cerr << "Shader compile skipped/failed (using existing SPIR-V if present): " << source_path << std::endl;
+            }
+        }
     }
 
     auto spirv_data = ShaderManager::load_spirv(spirv_path);
@@ -26,7 +43,8 @@ bool ShaderManager::ShaderModule::create(VkDevice device, const std::filesystem:
         return false;
     }
 
-    source_last_modified = std::filesystem::last_write_time(source_path);
+    if (std::filesystem::exists(source_path)) source_last_modified = std::filesystem::last_write_time(source_path);
+    if (std::filesystem::exists(spirv_path)) spirv_last_modified = std::filesystem::last_write_time(spirv_path);
     return true;
 }
 
@@ -36,16 +54,19 @@ void ShaderManager::ShaderModule::destroy(VkDevice device) {
 }
 
 bool ShaderManager::ShaderModule::needs_reload() const {
-    return std::filesystem::last_write_time(source_path) > source_last_modified;
+    if (std::filesystem::exists(spirv_path) && std::filesystem::last_write_time(spirv_path) > spirv_last_modified) return true;
+    if (ShaderManager::runtime_compile_enabled() && std::filesystem::exists(source_path) && std::filesystem::last_write_time(source_path) > source_last_modified) return true;
+    return false;
 }
 
 bool ShaderManager::ShaderModule::reload(VkDevice device) {
     if (!needs_reload()) return true;
 
-    // Recompile GLSL to SPIR-V
-    if (!ShaderManager::compile_glsl_to_spirv(source_path, spirv_path)) {
-        std::cerr << "Failed to recompile shader: " << source_path << std::endl;
-        return false;
+    if (ShaderManager::runtime_compile_enabled() && std::filesystem::exists(source_path)) {
+        if (!ShaderManager::compile_glsl_to_spirv(source_path, spirv_path, 2000)) {
+            std::cerr << "Failed to recompile shader (keeping old module): " << source_path << std::endl;
+            return false;
+        }
     }
 
     // Destroy old module
@@ -65,7 +86,8 @@ bool ShaderManager::ShaderModule::reload(VkDevice device) {
         return false;
     }
 
-    source_last_modified = std::filesystem::last_write_time(source_path);
+    if (std::filesystem::exists(source_path)) source_last_modified = std::filesystem::last_write_time(source_path);
+    if (std::filesystem::exists(spirv_path)) spirv_last_modified = std::filesystem::last_write_time(spirv_path);
     return true;
 }
 
@@ -124,16 +146,38 @@ std::vector<uint32_t> ShaderManager::load_spirv(const std::filesystem::path& pat
     return buffer;
 }
 
-bool ShaderManager::compile_glsl_to_spirv(const std::filesystem::path& source_path, const std::filesystem::path& spirv_path) {
+bool ShaderManager::compile_glsl_to_spirv(const std::filesystem::path& source_path, const std::filesystem::path& spirv_path, std::uint32_t timeout_ms) {
     // Create output directory if it doesn't exist
     std::filesystem::create_directories(spirv_path.parent_path());
 
-    // Compile using glslangValidator
+#ifdef _WIN32
+    std::string cmd = "glslangValidator -V \"" + source_path.string() + "\" -o \"" + spirv_path.string() + "\"";
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    std::vector<char> buf(cmd.begin(), cmd.end());
+    buf.push_back('\0');
+    if (!CreateProcessA(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        return false;
+    }
+    DWORD w = WaitForSingleObject(pi.hProcess, timeout_ms);
+    DWORD code = 1;
+    if (w == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return false;
+    }
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    int result = (code == 0) ? 0 : 1;
+#else
     std::string command = "glslangValidator -V \"" + source_path.string() + "\" -o \"" + spirv_path.string() + "\"";
     int result = std::system(command.c_str());
+#endif
 
     if (result != 0) {
-        std::cerr << "Failed to compile shader: " << source_path << std::endl;
         return false;
     }
 

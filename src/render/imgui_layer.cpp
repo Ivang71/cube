@@ -1,6 +1,8 @@
 #include "imgui_layer.hpp"
 #include "../core/console.hpp"
 #include "../core/log.hpp"
+#include "voxel/blocks.hpp"
+#include "voxel/chunk_manager.hpp"
 #include <cstdio>
 #include <iostream>
 #include <array>
@@ -385,6 +387,50 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
 
             if (auto_scroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 5.0f) ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();
+        }
+        ImGui::End();
+    }
+
+    if (debug_data.show_voxel_debug && debug_data.block_registry && debug_data.chunk_manager) {
+        static ImGuiTextFilter block_filter;
+        ImGui::SetNextWindowSize(ImVec2(560, 520), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Voxel", nullptr)) {
+            if (ImGui::BeginTabBar("voxel_tabs")) {
+                if (ImGui::BeginTabItem("Blocks")) {
+                    block_filter.Draw("Filter");
+                    ImGui::Separator();
+                    const auto& blocks = debug_data.block_registry->all();
+                    ImGuiListClipper clipper;
+                    clipper.Begin((int)blocks.size());
+                    while (clipper.Step()) {
+                        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+                            const auto& b = blocks[(std::size_t)i];
+                            if (!block_filter.PassFilter(b.name.c_str())) continue;
+                            ImGui::Text("#%d  %s  %s", i, b.name.c_str(), b.solid ? "solid" : "air");
+                        }
+                    }
+                    ImGui::EndTabItem();
+                }
+                if (ImGui::BeginTabItem("Chunks")) {
+                    const auto st = debug_data.chunk_manager->stats();
+                    ImGui::Text("Chunks: %zu", st.chunk_count);
+                    ImGui::Text("Payload: %s / %s", format_memory(st.payload_bytes).c_str(), format_memory(st.payload_limit).c_str());
+                    ImGui::Text("Evictions: %llu", (unsigned long long)st.evictions);
+                    ImGui::Separator();
+                    ImGui::Text("Largest chunks:");
+                    const auto largest = debug_data.chunk_manager->largest_chunks(12);
+                    for (const auto& [c, sz] : largest) {
+                        const auto* ch = debug_data.chunk_manager->get_chunk(c);
+                        const std::uint8_t bits = ch ? ch->bits_per_block() : 0;
+                        const std::size_t pal = ch ? ch->palette_size() : 0;
+                        ImGui::Text("(%lld,%lld,%lld)  %s  pal=%zu  bpb=%u",
+                            (long long)c.x, (long long)c.y, (long long)c.z,
+                            format_memory(sz).c_str(), pal, (unsigned)bits);
+                    }
+                    ImGui::EndTabItem();
+                }
+                ImGui::EndTabBar();
+            }
         }
         ImGui::End();
     }

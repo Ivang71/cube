@@ -29,6 +29,8 @@
 #include "core/job_system.hpp"
 #include "math/math.hpp"
 #include "memory/linear_allocator.hpp"
+#include "voxel/blocks.hpp"
+#include "voxel/chunk_manager.hpp"
 
 class App {
 public:
@@ -115,6 +117,11 @@ private:
     // Debug overlay state
     bool show_debug_overlay{false};
     bool show_log_viewer{false};
+    bool show_voxel_debug{false};
+
+    cube::voxel::BlockRegistry block_registry;
+    cube::voxel::DefaultBlocks default_blocks;
+    cube::voxel::ChunkManager chunk_manager;
 
     // Console
     Console console;

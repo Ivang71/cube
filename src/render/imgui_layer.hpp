@@ -14,6 +14,7 @@
 #include "render/gpu_memory.hpp"
 
 class Console;
+namespace cube::voxel { class BlockRegistry; class ChunkManager; }
 
 struct DebugData {
     float fps;
@@ -42,6 +43,9 @@ struct DebugData {
     std::array<float, 64> job_worker_utilization;
     bool show_overlay;
     bool show_log_viewer;
+    bool show_voxel_debug;
+    const cube::voxel::BlockRegistry* block_registry;
+    const cube::voxel::ChunkManager* chunk_manager;
 };
 
 class ImGuiLayer {

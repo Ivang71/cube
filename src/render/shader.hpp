@@ -13,6 +13,7 @@ public:
         std::filesystem::path source_path;
         std::filesystem::path spirv_path;
         std::filesystem::file_time_type source_last_modified;
+        std::filesystem::file_time_type spirv_last_modified;
 
         bool create(VkDevice device, const std::filesystem::path& source_path, const std::filesystem::path& spirv_path);
         void destroy(VkDevice device);
@@ -32,5 +33,6 @@ private:
     ShaderModule vert_shader;
     ShaderModule frag_shader;
     static std::vector<uint32_t> load_spirv(const std::filesystem::path& path);
-    static bool compile_glsl_to_spirv(const std::filesystem::path& source_path, const std::filesystem::path& spirv_path);
+    static bool compile_glsl_to_spirv(const std::filesystem::path& source_path, const std::filesystem::path& spirv_path, std::uint32_t timeout_ms);
+    static bool runtime_compile_enabled();
 };

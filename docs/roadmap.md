@@ -290,7 +290,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 
 ## Stage 5: Memory Architecture
 
-### 5.1 Allocator Framework
+### 5.1 Allocator Framework ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 5.1.1 | Define allocator interface | Interface compiles |
@@ -300,7 +300,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 5.1.5 | Add allocation tracking | Track bytes allocated |
 | 5.1.6 | Add leak detection (debug) | Leaks reported on shutdown |
 
-### 5.2 Frame Allocator
+### 5.2 Frame Allocator ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 5.2.1 | Create per-frame linear allocator | One per frame-in-flight |
@@ -309,7 +309,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 5.2.4 | Size: 64MB per frame | Sufficient for typical frame |
 | 5.2.5 | Overflow warning | Log if exceeded |
 
-### 5.3 GPU Memory Management
+### 5.3 GPU Memory Management ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 5.3.1 | Query VMA statistics | Stats retrieved |
@@ -318,7 +318,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 5.3.4 | Implement upload queue | Uploads queued and processed |
 | 5.3.5 | Budget system (VRAM limit) | Warning on threshold |
 
-### 5.4 Budget Enforcement
+### 5.4 Budget Enforcement ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 5.4.1 | Define budget categories | Enum/constants defined |
@@ -331,7 +331,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 
 ## Stage 6: Job System
 
-### 6.1 Queue Structure
+### 6.1 Queue Structure ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 6.1.1 | Define Job struct (function ptr, data, counter) | Struct compiles |
@@ -339,7 +339,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 6.1.3 | Test queue single-threaded | Enqueue/dequeue correct |
 | 6.1.4 | Test queue multi-threaded (stress) | No data races |
 
-### 6.2 Worker Threads
+### 6.2 Worker Threads ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 6.2.1 | Create worker thread pool | Threads created |
@@ -348,7 +348,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 6.2.4 | Workers decrement job counter | Counter reaches 0 |
 | 6.2.5 | Thread count: cores - 2 | Correct count |
 
-### 6.3 Job Submission
+### 6.3 Job Submission ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 6.3.1 | Submit single job | Job executes |
@@ -356,7 +356,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 6.3.3 | Wait on job counter | Wait returns when done |
 | 6.3.4 | Job priorities (high, normal, low) | High runs first |
 
-### 6.4 Job Dependencies
+### 6.4 Job Dependencies ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 6.4.1 | Job can depend on counter | Job waits for dependency |
@@ -364,7 +364,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 6.4.3 | Fan-out / fan-in pattern | Works correctly |
 | 6.4.4 | Test deadlock detection | Deadlocks reported (or prevented) |
 
-### 6.5 Debug & Profiling
+### 6.5 Debug & Profiling ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 6.5.1 | Tracy zones for job execution | Jobs visible in Tracy |
@@ -376,7 +376,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 
 ## Stage 7: Voxel Data
 
-### 7.1 Block System
+### 7.1 Block System ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 7.1.1 | Define BlockID type (uint16_t) | Type defined |
@@ -388,7 +388,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 7.1.7 | Query block properties by ID | Properties returned |
 | 7.1.8 | Debug UI: block browser | Lists all blocks |
 
-### 7.2 Chunk Structure
+### 7.2 Chunk Structure ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 7.2.1 | Define CHUNK_SIZE constant (32) | Constant defined |
@@ -399,7 +399,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 7.2.6 | set_block(x, y, z, id) | Sets and marks dirty |
 | 7.2.7 | Dirty flag for mesh regen | Flag works |
 
-### 7.3 Chunk Compression
+### 7.3 Chunk Compression ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 7.3.1 | Implement palette compression | Palette works |
@@ -409,7 +409,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 7.3.5 | Measure memory: terrain chunk | <4KB typical |
 | 7.3.6 | Measure memory: noisy chunk | <32KB worst |
 
-### 7.4 Chunk Storage
+### 7.4 Chunk Storage ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 7.4.1 | Create ChunkManager class | Class compiles |

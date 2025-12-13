@@ -23,6 +23,8 @@
 
 #include "math/math.hpp"
 #include "memory/leak.hpp"
+#include "voxel/blocks.hpp"
+#include "voxel/chunk_manager.hpp"
 
 static std::filesystem::path exe_dir() {
 #ifdef _WIN32
@@ -306,6 +308,15 @@ bool App::init_vulkan() {
 
     // Register console commands
     register_console_commands();
+
+    default_blocks = cube::voxel::register_default_blocks(block_registry);
+    chunk_manager.set_payload_limit(64ull * 1024ull * 1024ull);
+    const cube::voxel::ChunkCoord cc{0, 0, 0};
+    chunk_manager.create_chunk(cc, default_blocks.air);
+    for (int z = 0; z < 16; ++z) for (int y = 0; y < 8; ++y) for (int x = 0; x < 16; ++x) {
+        const auto id = (y < 4) ? default_blocks.stone : (y < 7 ? default_blocks.dirt : default_blocks.grass);
+        chunk_manager.set_block(cc, x, y, z, id);
+    }
 
     camera.abs = render_origin + cube::math::UniversalCoord::from_meters(0, 0, 2);
     camera.frac = glm::vec3(0.0f);
@@ -617,6 +628,7 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
                 case GLFW_KEY_LEFT_SHIFT: app->input.shift_pressed = true; break;
                 case GLFW_KEY_F3: app->show_debug_overlay = !app->show_debug_overlay; break;
                 case GLFW_KEY_F4: app->show_log_viewer = !app->show_log_viewer; break;
+                case GLFW_KEY_F5: app->show_voxel_debug = !app->show_voxel_debug; break;
                 case GLFW_KEY_T:
                     app->show_console = true;
                     app->console.set_focus();
@@ -1070,7 +1082,10 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
             job_stats.stall_warnings,
             job_stats.worker_utilization,
             show_debug_overlay,
-            show_log_viewer
+            show_log_viewer,
+            show_voxel_debug,
+            &block_registry,
+            &chunk_manager
         };
         imgui_layer.render(cmd, imageIndex, swapchain.extent, debug_data, &console, &show_console, !show_console);
     }
