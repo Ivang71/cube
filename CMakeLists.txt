@@ -105,6 +105,12 @@ add_executable(cube
   src/core/log.hpp
   src/core/profile.hpp
   src/core/tracy_new_delete.cpp
+  src/memory/leak.cpp
+  src/memory/leak.hpp
+  src/memory/allocator.hpp
+  src/memory/linear_allocator.hpp
+  src/memory/pool_allocator.hpp
+  src/memory/stack_allocator.hpp
   src/render/vk_instance.cpp
   src/render/vk_instance.hpp
   src/render/vk_device.cpp
@@ -121,6 +127,10 @@ add_executable(cube
   src/render/pipeline.hpp
   src/render/imgui_layer.cpp
   src/render/imgui_layer.hpp
+  src/render/gpu_memory.cpp
+  src/render/gpu_memory.hpp
+  src/render/gpu_uploader.cpp
+  src/render/gpu_uploader.hpp
   src/render/types.hpp
   src/main.cpp
   ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv
@@ -142,6 +152,7 @@ target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR
 
 add_executable(cube_tests
   tests/math_tests.cpp
+  tests/memory_tests.cpp
 )
 target_link_libraries(cube_tests PRIVATE glm::glm)
 target_include_directories(cube_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

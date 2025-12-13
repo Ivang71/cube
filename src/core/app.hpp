@@ -1,6 +1,9 @@
 #pragma once
 
 #include <vector>
+#include <cstddef>
+#include <array>
+#include <cstdint>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vk_mem_alloc.h>
@@ -19,9 +22,12 @@
 #include "render/render_pass.hpp"
 #include "render/pipeline.hpp"
 #include "render/imgui_layer.hpp"
+#include "render/gpu_memory.hpp"
+#include "render/gpu_uploader.hpp"
 #include "console.hpp"
 #include "core/profile.hpp"
 #include "math/math.hpp"
+#include "memory/linear_allocator.hpp"
 
 class App {
 public:
@@ -47,6 +53,7 @@ private:
     void update_debug_stats();
     float get_cpu_usage();
     float get_gpu_usage();
+    void* frame_alloc(std::size_t size, std::size_t align);
 
     GLFWwindow* window{};
     VkInstanceContext instance;
@@ -143,7 +150,18 @@ private:
     VmaAllocation uniformBufferAllocation{};
     void* uniformBufferMapped{};
 
+    cube::render::GpuMemoryTracker gpu_mem;
+    cube::render::GpuUploader gpu_uploader;
+
     void* tracy_vk_ctx{};
+
+    struct FrameArena {
+        std::vector<std::byte> backing;
+        cube::mem::LinearAllocator alloc;
+        bool overflowed{false};
+    };
+    std::vector<FrameArena> frame_arenas;
+    static constexpr std::size_t FRAME_ARENA_BYTES = 64ull * 1024ull * 1024ull;
 
 };
 

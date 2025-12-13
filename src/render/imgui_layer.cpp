@@ -278,6 +278,49 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
 
         // Pop the style changes
         ImGui::PopStyleVar(2);
+
+        ImGui::SetNextWindowPos(ImVec2(display_size.x - 8.0f, 8.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(520, 380), ImGuiCond_Always);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.78f));
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.0f, 0.0f, 0.0f, 0.92f));
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.0f, 0.0f, 0.0f, 0.92f));
+        ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, ImVec4(0.0f, 0.0f, 0.0f, 0.92f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.92f, 0.92f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.65f, 0.65f, 0.65f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.10f, 0.10f, 0.10f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.12f, 0.12f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.12f, 0.12f, 0.12f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.35f, 0.35f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogramHovered, ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
+        if (ImGui::Begin("Memory", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::Text("Frame arena: %s / %s (peak %s)",
+                format_memory(debug_data.frame_arena_used).c_str(),
+                format_memory(debug_data.frame_arena_capacity).c_str(),
+                format_memory(debug_data.frame_arena_peak).c_str()
+            );
+            ImGui::Text("Staging ring: %s / %s",
+                format_memory((size_t)debug_data.staging_used).c_str(),
+                format_memory((size_t)debug_data.staging_capacity).c_str()
+            );
+            ImGui::Separator();
+            ImGui::Text("VMA: allocations=%u (%s) blocks=%u (%s)",
+                debug_data.vma_totals.allocation_count,
+                format_memory((size_t)debug_data.vma_totals.allocation_bytes).c_str(),
+                debug_data.vma_totals.block_count,
+                format_memory((size_t)debug_data.vma_totals.block_bytes).c_str()
+            );
+            ImGui::Separator();
+            const float denom = debug_data.vram_total ? (float)debug_data.vram_total : 1.0f;
+            for (std::size_t i = 0; i < debug_data.gpu_category_used.size(); ++i) {
+                const auto used = debug_data.gpu_category_used[i];
+                const float f = (float)used / denom;
+                ImGui::Text("%s: %s", cube::render::gpu_budget_category_name((cube::render::GpuBudgetCategory)i), format_memory((size_t)used).c_str());
+                ImGui::ProgressBar(f, ImVec2(-1.0f, 0.0f));
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleColor(12);
     }
 
     if (debug_data.show_log_viewer) {

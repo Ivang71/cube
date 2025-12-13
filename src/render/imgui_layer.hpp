@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vector>
+#include <array>
+#include <cstdint>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -9,6 +11,7 @@
 #include <glm/glm.hpp>
 
 #include "math/math.hpp"
+#include "render/gpu_memory.hpp"
 
 class Console;
 
@@ -22,6 +25,13 @@ struct DebugData {
     size_t ram_total;
     size_t vram_used;
     size_t vram_total;
+    cube::render::VmaTotals vma_totals;
+    std::array<std::uint64_t, static_cast<std::size_t>(cube::render::GpuBudgetCategory::Count)> gpu_category_used;
+    std::size_t frame_arena_used;
+    std::size_t frame_arena_capacity;
+    std::size_t frame_arena_peak;
+    std::uint64_t staging_used;
+    std::uint64_t staging_capacity;
     float cpu_usage;
     float gpu_usage;
     bool show_overlay;

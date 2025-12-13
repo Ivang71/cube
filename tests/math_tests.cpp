@@ -16,6 +16,8 @@ static int fail(int code, const char* what) {
     return code;
 }
 
+int run_memory_tests();
+
 int main() {
     using namespace cube::math;
 
@@ -119,6 +121,8 @@ int main() {
         if (!intersects(f, inside)) return fail(9, "frustum vs AABB (inside)");
         if (intersects(f, outside)) return fail(10, "frustum vs AABB (outside)");
     }
+
+    if (int r = run_memory_tests(); r != 0) return r;
 
     std::puts("cube_tests: OK");
     return 0;

@@ -22,6 +22,7 @@
 #endif
 
 #include "math/math.hpp"
+#include "memory/leak.hpp"
 
 static std::filesystem::path exe_dir() {
 #ifdef _WIN32
@@ -75,6 +76,17 @@ bool App::init_vulkan() {
     if (!create_swapchain()) return false;
     if (!frames.create(device.handle(), *device.queues().graphics, 2)) return false;
 
+    frame_arenas.resize(frames.frame_count());
+    for (auto& a : frame_arenas) {
+        a.backing.resize(FRAME_ARENA_BYTES);
+        a.alloc.reset(a.backing.data(), a.backing.size());
+        cube::mem::register_leak_check(
+            "FrameArena",
+            &a.alloc,
+            +[](void* ctx) -> std::size_t { return static_cast<cube::mem::LinearAllocator*>(ctx)->used(); }
+        );
+    }
+
 #if defined(TRACY_ENABLE)
     {
         VkCommandBuffer cb = frames.beginSingleTimeCommands(device.handle(), *device.queues().graphics);
@@ -92,6 +104,10 @@ bool App::init_vulkan() {
         LOG_ERROR("Core", "Failed to create VMA allocator");
         return false;
     }
+    gpu_mem.init(device.physical());
+    gpu_mem.update(allocator);
+    if (!gpu_uploader.init(allocator, 64ull * 1024ull * 1024ull)) return false;
+    gpu_mem.on_alloc(cube::render::GpuBudgetCategory::Staging, allocator, gpu_uploader.staging_allocation(), (std::uint64_t)gpu_uploader.staging_capacity());
 
     VkDescriptorSetLayoutBinding ubo_binding{};
     ubo_binding.binding = 0;
@@ -137,6 +153,7 @@ bool App::init_vulkan() {
         std::cerr << "Failed to create uniform buffer" << std::endl;
         return false;
     }
+    gpu_mem.on_alloc(cube::render::GpuBudgetCategory::Uniform, allocator, uniformBufferAllocation, (std::uint64_t)ubo_info.size);
     vmaMapMemory(allocator, uniformBufferAllocation, &uniformBufferMapped);
 
     VkDescriptorBufferInfo buffer_info{};
@@ -236,30 +253,6 @@ bool App::init_vulkan() {
 
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
-    // Create staging buffer
-    VkBuffer stagingBuffer;
-    VmaAllocation stagingBufferAllocation;
-    VkBufferCreateInfo stagingBufferInfo{};
-    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    stagingBufferInfo.size = bufferSize;
-    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VmaAllocationCreateInfo stagingAllocInfo = {};
-    stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-
-    if (vmaCreateBuffer(allocator, &stagingBufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingBufferAllocation, nullptr) != VK_SUCCESS) {
-        std::cerr << "Failed to create staging buffer" << std::endl;
-        return false;
-    }
-
-    // Copy vertex data to staging buffer
-    void* data;
-    vmaMapMemory(allocator, stagingBufferAllocation, &data);
-    memcpy(data, vertices.data(), (size_t)bufferSize);
-    vmaUnmapMemory(allocator, stagingBufferAllocation);
-
     // Create device-local vertex buffer
     VkBufferCreateInfo vertexBufferInfo{};
     vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -270,49 +263,17 @@ bool App::init_vulkan() {
     VmaAllocationCreateInfo vertexAllocInfo = {};
     vertexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
+    gpu_mem.update(allocator);
+    gpu_mem.note_vram_attempt((std::uint64_t)bufferSize);
+    if (!gpu_mem.can_allocate_vram((std::uint64_t)bufferSize)) return false;
     if (vmaCreateBuffer(allocator, &vertexBufferInfo, &vertexAllocInfo, &vertexBuffer, &vertexBufferAllocation, nullptr) != VK_SUCCESS) {
         std::cerr << "Failed to create vertex buffer" << std::endl;
         return false;
     }
-
-    // Copy staging buffer to vertex buffer
-    VkCommandBuffer commandBuffer = frames.beginSingleTimeCommands(device.handle(), *device.queues().graphics);
-
-    VkBufferCopy copyRegion{};
-    copyRegion.size = bufferSize;
-    vkCmdCopyBuffer(commandBuffer, stagingBuffer, vertexBuffer, 1, &copyRegion);
-
-    frames.endSingleTimeCommands(device.handle(), device.graphics(), commandBuffer);
-
-    // Clean up staging buffer
-    vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAllocation);
+    gpu_mem.on_alloc(cube::render::GpuBudgetCategory::Vertex, allocator, vertexBufferAllocation, (std::uint64_t)bufferSize);
 
     // Create index buffer
     VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
-
-    // Create staging buffer for indices
-    VkBuffer indexStagingBuffer;
-    VmaAllocation indexStagingBufferAllocation;
-    VkBufferCreateInfo indexStagingBufferInfo{};
-    indexStagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    indexStagingBufferInfo.size = indexBufferSize;
-    indexStagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    indexStagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VmaAllocationCreateInfo indexStagingAllocInfo = {};
-    indexStagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    indexStagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-
-    if (vmaCreateBuffer(allocator, &indexStagingBufferInfo, &indexStagingAllocInfo, &indexStagingBuffer, &indexStagingBufferAllocation, nullptr) != VK_SUCCESS) {
-        std::cerr << "Failed to create index staging buffer" << std::endl;
-        return false;
-    }
-
-    // Copy index data to staging buffer
-    void* indexData;
-    vmaMapMemory(allocator, indexStagingBufferAllocation, &indexData);
-    memcpy(indexData, indices.data(), (size_t)indexBufferSize);
-    vmaUnmapMemory(allocator, indexStagingBufferAllocation);
 
     // Create device-local index buffer
     VkBufferCreateInfo indexBufferInfo{};
@@ -324,22 +285,22 @@ bool App::init_vulkan() {
     VmaAllocationCreateInfo indexAllocInfo = {};
     indexAllocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
+    gpu_mem.update(allocator);
+    gpu_mem.note_vram_attempt((std::uint64_t)indexBufferSize);
+    if (!gpu_mem.can_allocate_vram((std::uint64_t)indexBufferSize)) return false;
     if (vmaCreateBuffer(allocator, &indexBufferInfo, &indexAllocInfo, &indexBuffer, &indexBufferAllocation, nullptr) != VK_SUCCESS) {
         std::cerr << "Failed to create index buffer" << std::endl;
         return false;
     }
+    gpu_mem.on_alloc(cube::render::GpuBudgetCategory::Index, allocator, indexBufferAllocation, (std::uint64_t)indexBufferSize);
 
-    // Copy staging buffer to index buffer
-    VkCommandBuffer indexCommandBuffer = frames.beginSingleTimeCommands(device.handle(), *device.queues().graphics);
-
-    VkBufferCopy indexCopyRegion{};
-    indexCopyRegion.size = indexBufferSize;
-    vkCmdCopyBuffer(indexCommandBuffer, indexStagingBuffer, indexBuffer, 1, &indexCopyRegion);
-
-    frames.endSingleTimeCommands(device.handle(), device.graphics(), indexCommandBuffer);
-
-    // Clean up index staging buffer
-    vmaDestroyBuffer(allocator, indexStagingBuffer, indexStagingBufferAllocation);
+    gpu_uploader.begin_frame();
+    auto alloc_fn = +[](void* ctx, std::size_t sz, std::size_t al) -> void* { return static_cast<App*>(ctx)->frame_alloc(sz, al); };
+    if (!gpu_uploader.enqueue_buffer_upload(this, alloc_fn, vertexBuffer, 0, vertices.data(), bufferSize)) return false;
+    if (!gpu_uploader.enqueue_buffer_upload(this, alloc_fn, indexBuffer, 0, indices.data(), indexBufferSize)) return false;
+    VkCommandBuffer upload_cb = frames.beginSingleTimeCommands(device.handle(), *device.queues().graphics);
+    gpu_uploader.flush(upload_cb);
+    frames.endSingleTimeCommands(device.handle(), device.graphics(), upload_cb);
 
     if (!pipeline.create(device.handle(), render_pass.handle, vert_shader->module, frag_shader->module, swapchain.extent, descriptor_set_layout)) return false;
 
@@ -567,6 +528,12 @@ void App::main_loop() {
             vkWaitForFences(device.handle(), 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
             vkResetFences(device.handle(), 1, &frame.in_flight);
         }
+        if (!frame_arenas.empty()) {
+            auto& a = frame_arenas[frames.current_frame_index()];
+            a.overflowed = false;
+            a.alloc.reset();
+        }
+        gpu_uploader.begin_frame();
 
         uint32_t imageIndex = 0;
         VkResult acq = VK_SUCCESS;
@@ -707,13 +674,9 @@ void App::mouse_button_callback(GLFWwindow* window, int button, int action, int 
 
     // If ImGui wants to capture mouse input, let it handle the event
     if (ImGui::GetIO().WantCaptureMouse) return;
-
-    // Toggle mouse capture on left mouse button click
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        app->camera.mouse_captured = !app->camera.mouse_captured;
-        glfwSetInputMode(window, GLFW_CURSOR,
-            app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-    }
+    (void)button;
+    (void)action;
+    (void)mods;
 }
 
 float App::get_cpu_usage() {
@@ -818,25 +781,10 @@ void App::update_debug_stats() {
     }
 #endif
 
-    // Get VRAM information from VMA (only device-local heaps)
     if (allocator) {
-        // Get memory properties to identify device-local heaps
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(device.physical(), &memProperties);
-
-        VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-        vmaGetHeapBudgets(allocator, budgets);
-
-        vram_used = 0;
-        vram_total = 0;
-
-        for (uint32_t i = 0; i < memProperties.memoryHeapCount; ++i) {
-            // Only count device-local heaps (GPU memory)
-            if (memProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-                vram_used += budgets[i].usage;
-                vram_total += budgets[i].budget;
-            }
-        }
+        gpu_mem.update(allocator);
+        vram_used = (size_t)gpu_mem.vram_used();
+        vram_total = (size_t)gpu_mem.vram_budget();
     }
 }
 
@@ -925,6 +873,7 @@ void App::cleanup() {
         uniformBufferMapped = nullptr;
     }
     if (uniformBuffer) {
+        gpu_mem.on_free(uniformBufferAllocation);
         vmaDestroyBuffer(allocator, uniformBuffer, uniformBufferAllocation);
         uniformBuffer = VK_NULL_HANDLE;
         uniformBufferAllocation = VK_NULL_HANDLE;
@@ -940,18 +889,22 @@ void App::cleanup() {
     }
 
     if (vertexBuffer) {
+        gpu_mem.on_free(vertexBufferAllocation);
         vmaDestroyBuffer(allocator, vertexBuffer, vertexBufferAllocation);
         vertexBuffer = VK_NULL_HANDLE;
         vertexBufferAllocation = VK_NULL_HANDLE;
     }
 
     if (indexBuffer) {
+        gpu_mem.on_free(indexBufferAllocation);
         vmaDestroyBuffer(allocator, indexBuffer, indexBufferAllocation);
         indexBuffer = VK_NULL_HANDLE;
         indexBufferAllocation = VK_NULL_HANDLE;
     }
 
     if (allocator) {
+        gpu_mem.on_free(gpu_uploader.staging_allocation());
+        gpu_uploader.shutdown(allocator);
         vmaDestroyAllocator(allocator);
         allocator = VK_NULL_HANDLE;
     }
@@ -964,7 +917,20 @@ void App::cleanup() {
     if (window) glfwDestroyWindow(window);
     glfwTerminate();
     LOG_INFO("Core", "Shutdown");
+    for (auto& a : frame_arenas) a.alloc.reset();
+    cube::mem::report_leaks();
     cube::log::shutdown();
+}
+
+void* App::frame_alloc(std::size_t size, std::size_t align) {
+    if (frame_arenas.empty()) return nullptr;
+    auto& a = frame_arenas[frames.current_frame_index()];
+    void* p = a.alloc.alloc(size, align);
+    if (!p && !a.overflowed) {
+        a.overflowed = true;
+        LOG_WARN("Memory", "Frame allocator overflow (requested %zu bytes)", size);
+    }
+    return p;
 }
 
 bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
@@ -973,6 +939,15 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
     bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS) return false;
+
+    gpu_uploader.flush(cmd);
+    {
+        VkMemoryBarrier mb{};
+        mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        mb.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &mb, 0, nullptr, 0, nullptr);
+    }
 
 #if defined(TRACY_ENABLE)
     TracyVkCtx vkctx = (TracyVkCtx)tracy_vk_ctx;
@@ -1040,6 +1015,19 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
 #endif
         imgui_layer.new_frame();
 
+        std::array<std::uint64_t, static_cast<std::size_t>(cube::render::GpuBudgetCategory::Count)> cat_used{};
+        {
+            auto cats = gpu_mem.category_usage();
+            for (std::size_t i = 0; i < cats.size(); ++i) cat_used[i] = cats[i].used;
+        }
+        std::size_t arena_used = 0, arena_cap = 0, arena_peak = 0;
+        if (!frame_arenas.empty()) {
+            const auto& a = frame_arenas[frames.current_frame_index()].alloc;
+            arena_used = a.used();
+            arena_cap = a.capacity();
+            arena_peak = a.stats().peak_bytes_in_use;
+        }
+
         DebugData debug_data{
             fps,
             frame_time_ms,
@@ -1050,6 +1038,13 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
             ram_total,
             vram_used,
             vram_total,
+            gpu_mem.vma_totals(),
+            cat_used,
+            arena_used,
+            arena_cap,
+            arena_peak,
+            (std::uint64_t)gpu_uploader.staging_used(),
+            (std::uint64_t)gpu_uploader.staging_capacity(),
             cpu_usage,
             gpu_usage,
             show_debug_overlay,

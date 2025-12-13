@@ -17,6 +17,8 @@ public:
     void destroy(VkDevice device);
 
     FrameSync& current() { return frames[current_index]; }
+    std::size_t current_frame_index() const { return current_index; }
+    std::size_t frame_count() const { return frames.size(); }
     void advance() { current_index = (current_index + 1) % frames.size(); }
     VkCommandPool command_pool() const { return pool; }
 
