@@ -3,6 +3,7 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
+#include <cstdint>
 #include <utility>
 
 #include <glm/glm.hpp>
@@ -17,6 +18,95 @@ using Vec4 = glm::vec4;
 using Mat4 = glm::mat4;
 
 inline Mat4 mul(const Mat4& a, const Mat4& b) { return a * b; }
+
+struct UniversalCoord {
+    std::int64_t sx = 0, sy = 0, sz = 0;
+    std::int32_t mx = 0, my = 0, mz = 0;
+
+    static constexpr std::int64_t sector_m = 1000;
+
+    constexpr UniversalCoord() = default;
+    constexpr UniversalCoord(std::int64_t sx_, std::int64_t sy_, std::int64_t sz_, std::int32_t mx_, std::int32_t my_, std::int32_t mz_)
+        : sx(sx_), sy(sy_), sz(sz_), mx(mx_), my(my_), mz(mz_) {
+        normalize();
+    }
+
+    static constexpr UniversalCoord from_meters(std::int64_t x_m, std::int64_t y_m, std::int64_t z_m) {
+        UniversalCoord u{};
+        u.set_from_total_m(x_m, y_m, z_m);
+        return u;
+    }
+
+    constexpr UniversalCoord operator+(const UniversalCoord& o) const {
+        UniversalCoord r{sx + o.sx, sy + o.sy, sz + o.sz, mx + o.mx, my + o.my, mz + o.mz};
+        return r;
+    }
+
+    constexpr UniversalCoord operator-(const UniversalCoord& o) const {
+        UniversalCoord r = from_meters(total_x_m() - o.total_x_m(), total_y_m() - o.total_y_m(), total_z_m() - o.total_z_m());
+        return r;
+    }
+
+    constexpr UniversalCoord& operator+=(const UniversalCoord& o) {
+        sx += o.sx;
+        sy += o.sy;
+        sz += o.sz;
+        mx += o.mx;
+        my += o.my;
+        mz += o.mz;
+        normalize();
+        return *this;
+    }
+
+    constexpr UniversalCoord& operator-=(const UniversalCoord& o) {
+        *this = *this - o;
+        return *this;
+    }
+
+    constexpr Vec3 to_relative(const UniversalCoord& camera) const {
+        const std::int64_t dx = total_x_m() - camera.total_x_m();
+        const std::int64_t dy = total_y_m() - camera.total_y_m();
+        const std::int64_t dz = total_z_m() - camera.total_z_m();
+        return Vec3(static_cast<float>(dx), static_cast<float>(dy), static_cast<float>(dz));
+    }
+
+    inline double distance(const UniversalCoord& o) const {
+        const double dx = static_cast<double>(total_x_m() - o.total_x_m());
+        const double dy = static_cast<double>(total_y_m() - o.total_y_m());
+        const double dz = static_cast<double>(total_z_m() - o.total_z_m());
+        return glm::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    constexpr std::int64_t total_x_m() const { return sx * sector_m + mx; }
+    constexpr std::int64_t total_y_m() const { return sy * sector_m + my; }
+    constexpr std::int64_t total_z_m() const { return sz * sector_m + mz; }
+
+private:
+    static constexpr std::int64_t floor_div(std::int64_t a, std::int64_t b) {
+        std::int64_t q = a / b;
+        const std::int64_t r = a % b;
+        if ((r != 0) && ((r > 0) != (b > 0))) --q;
+        return q;
+    }
+
+    constexpr void set_from_total_m(std::int64_t x_m, std::int64_t y_m, std::int64_t z_m) {
+        set_axis_from_total_m(sx, mx, x_m);
+        set_axis_from_total_m(sy, my, y_m);
+        set_axis_from_total_m(sz, mz, z_m);
+    }
+
+    static constexpr void set_axis_from_total_m(std::int64_t& s, std::int32_t& m, std::int64_t t) {
+        s = floor_div(t, sector_m);
+        const std::int64_t mm = t - s * sector_m;
+        m = static_cast<std::int32_t>(mm);
+    }
+
+    constexpr void normalize() {
+        set_axis_from_total_m(sx, mx, total_x_m());
+        set_axis_from_total_m(sy, my, total_y_m());
+        set_axis_from_total_m(sz, mz, total_z_m());
+    }
+};
 
 inline Mat4 perspective_vk(float fovy_rad, float aspect, float z_near, float z_far) {
     Mat4 m = glm::perspectiveRH_ZO(fovy_rad, aspect, z_near, z_far);

@@ -215,25 +215,29 @@ void ImGuiLayer::new_frame() {
 void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D extent, const DebugData& debug_data, class Console* console, bool* show_console, bool show_chat_messages) {
     // Show debug overlay if enabled
     if (debug_data.show_overlay) {
-        // Style the window background and remove borders
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.7f)); // Black with 30% opacity
+        ImVec2 display_size = ImGui::GetIO().DisplaySize;
+        const float line_h = ImGui::GetTextLineHeightWithSpacing();
+        const float overlay_h = (line_h * 10.0f) + 12.0f;
+
+        // No background, no borders
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f); // No border
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f)); // Add some padding
 
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(display_size.x, overlay_h), ImGuiCond_Always);
         ImGui::Begin("Debug Overlay", nullptr,
             ImGuiWindowFlags_NoDecoration |
             ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoSavedSettings |
             ImGuiWindowFlags_NoFocusOnAppearing |
             ImGuiWindowFlags_NoNav |
-            ImGuiWindowFlags_NoInputs);
+            ImGuiWindowFlags_NoInputs |
+            ImGuiWindowFlags_NoBackground);
 
         // Make font bigger for better legibility
         ImGui::SetWindowFontScale(1.2f);
 
-        ImGui::Text("FPS: %.1f", debug_data.fps);
+        ImGui::Text("FPS: %d", (int)debug_data.fps);
         ImGui::Text("Frame Time: %.2f ms", debug_data.frame_time_ms);
         ImGui::Text("CPU: %.1f%%", debug_data.cpu_usage);
         ImGui::Text("GPU: %.1f%%", debug_data.gpu_usage);
@@ -241,6 +245,14 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
             debug_data.camera_position.x,
             debug_data.camera_position.y,
             debug_data.camera_position.z);
+        ImGui::Text("Origin: (%lld,%lld,%lld) + (%d,%d,%d)m",
+            (long long)debug_data.render_origin.sx,
+            (long long)debug_data.render_origin.sy,
+            (long long)debug_data.render_origin.sz,
+            (int)debug_data.render_origin.mx,
+            (int)debug_data.render_origin.my,
+            (int)debug_data.render_origin.mz);
+        ImGui::Text("Dist from origin: %.2fm", debug_data.distance_from_origin_m);
 
         // RAM display
         if (debug_data.ram_total > 0) {
@@ -266,7 +278,6 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
 
         // Pop the style changes
         ImGui::PopStyleVar(2);
-        ImGui::PopStyleColor(1);
     }
 
     if (debug_data.show_log_viewer) {

@@ -11,6 +11,8 @@
 #include <string>
 #include <chrono>
 #include <cstring>
+#include <cstdint>
+#include <charconv>
 #include <imgui.h>
 #if defined(TRACY_ENABLE)
   #include <tracy/TracyVulkan.hpp>
@@ -344,6 +346,12 @@ bool App::init_vulkan() {
     // Register console commands
     register_console_commands();
 
+    camera.abs = render_origin + cube::math::UniversalCoord::from_meters(0, 0, 2);
+    camera.frac = glm::vec3(0.0f);
+    camera.local_position = camera.abs.to_relative(render_origin) + camera.frac;
+    quad_abs = camera.abs + cube::math::UniversalCoord::from_meters(0, 0, -1);
+    quad_frac = glm::vec3(0.0f);
+
     return true;
 }
 
@@ -371,11 +379,65 @@ void App::register_console_commands() {
                 float y = std::stof(args[2]);
                 float z = std::stof(args[3]);
 
-                camera.position = glm::vec3(x, y, z);
+                const double fx = std::floor((double)x);
+                const double fy = std::floor((double)y);
+                const double fz = std::floor((double)z);
+                camera.abs = render_origin + cube::math::UniversalCoord::from_meters((std::int64_t)fx, (std::int64_t)fy, (std::int64_t)fz);
+                camera.frac = glm::vec3((float)(x - fx), (float)(y - fy), (float)(z - fz));
+                camera.local_position = camera.abs.to_relative(render_origin) + camera.frac;
+                maybe_shift_origin();
                 console.add_log_message("Teleported to: (" + std::to_string(x) + ", " +
                                        std::to_string(y) + ", " + std::to_string(z) + ")", true);
             } catch (const std::exception&) {
                 console.add_log_message("Error: Invalid coordinates. Use numbers like: tp 10.5 20.0 -5.2");
+            }
+        });
+
+    console.register_command("origin_add", "Shift render origin by integer meters and keep view stable (/origin_add x y z)",
+        [this](const std::vector<std::string>& args) {
+            if (args.size() != 4) {
+                console.add_log_message("Usage: origin_add <x> <y> <z>");
+                return;
+            }
+            auto parse_i64 = [](const std::string& s, std::int64_t& out) -> bool {
+                const char* b = s.data();
+                const char* e = s.data() + s.size();
+                std::from_chars_result r = std::from_chars(b, e, out, 10);
+                return r.ec == std::errc{} && r.ptr == e;
+            };
+
+            std::int64_t x = 0, y = 0, z = 0;
+            if (!parse_i64(args[1], x) || !parse_i64(args[2], y) || !parse_i64(args[3], z)) {
+                console.add_log_message("Error: meters must be int64. Example: /origin_add 100000 0 0");
+                return;
+            }
+                if (x == 0 && y == 0 && z == 0) return;
+                const auto d = cube::math::UniversalCoord::from_meters(x, y, z);
+                render_origin += d;
+                camera.abs += d;
+                quad_abs += d;
+                camera.local_position = camera.abs.to_relative(render_origin) + camera.frac;
+                console.add_log_message("Origin shifted by meters: (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")", true);
+        });
+
+    console.register_command("quad", "Set quad local position in meters (/quad x y z)",
+        [this](const std::vector<std::string>& args) {
+            if (args.size() != 4) {
+                console.add_log_message("Usage: quad <x> <y> <z>");
+                return;
+            }
+            try {
+                float x = std::stof(args[1]);
+                float y = std::stof(args[2]);
+                float z = std::stof(args[3]);
+                const double fx = std::floor((double)x);
+                const double fy = std::floor((double)y);
+                const double fz = std::floor((double)z);
+                quad_abs = camera.abs + cube::math::UniversalCoord::from_meters((std::int64_t)fx, (std::int64_t)fy, (std::int64_t)fz);
+                quad_frac = glm::vec3((float)(x - fx), (float)(y - fy), (float)(z - fz));
+                console.add_log_message("Quad set to: (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")", true);
+            } catch (const std::exception&) {
+                console.add_log_message("Error: Invalid coordinates.");
             }
         });
 }
@@ -427,6 +489,7 @@ void App::main_loop() {
         {
             CUBE_PROFILE_SCOPE_N("update_camera");
             update_camera(delta_time);
+            maybe_shift_origin();
         }
 
         // Handle console mouse capture
@@ -475,19 +538,17 @@ void App::main_loop() {
         static auto startTime = std::chrono::high_resolution_clock::now();
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-        // Position the quad at Z=-1 (in front of camera) and rotate
-        ubo.model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f)) *
+        const glm::vec3 quad_rel = quad_abs.to_relative(camera.abs) + (quad_frac - camera.frac);
+        ubo.model = glm::translate(glm::mat4(1.0f), quad_rel) *
                    glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-        // Camera view matrix (task 2.8.2)
-        // Updated to match movement coordinate system (Y = forward)
-        glm::vec3 camera_target = camera.position + glm::vec3(
+        glm::vec3 forward = glm::vec3(
             cos(camera.pitch) * sin(camera.yaw),
             cos(camera.pitch) * cos(camera.yaw),
             sin(camera.pitch)
         );
         glm::vec3 camera_up = glm::vec3(0.0f, 0.0f, 1.0f); // Z-up world
-        ubo.view = glm::lookAt(camera.position, camera_target, camera_up);
+        ubo.view = glm::lookAt(glm::vec3(0.0f), forward, camera_up);
 
         float aspect = static_cast<float>(swapchain.extent.width) / static_cast<float>(swapchain.extent.height);
         float t = tan(camera.fov * 0.5f);
@@ -578,6 +639,7 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
                 case GLFW_KEY_A: app->input.a_pressed = true; break;
                 case GLFW_KEY_S: app->input.s_pressed = true; break;
                 case GLFW_KEY_D: app->input.d_pressed = true; break;
+                case GLFW_KEY_LEFT_SHIFT: app->input.shift_pressed = true; break;
                 case GLFW_KEY_F3: app->show_debug_overlay = !app->show_debug_overlay; break;
                 case GLFW_KEY_F4: app->show_log_viewer = !app->show_log_viewer; break;
                 case GLFW_KEY_T:
@@ -605,6 +667,7 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
                 case GLFW_KEY_A: app->input.a_pressed = false; break;
                 case GLFW_KEY_S: app->input.s_pressed = false; break;
                 case GLFW_KEY_D: app->input.d_pressed = false; break;
+                case GLFW_KEY_LEFT_SHIFT: app->input.shift_pressed = false; break;
             }
         }
     }
@@ -639,6 +702,8 @@ void App::cursor_pos_callback(GLFWwindow* window, double xpos, double ypos) {
 
 void App::mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
     App* app = static_cast<App*>(glfwGetWindowUserPointer(window));
+
+    if (app->show_console) return;
 
     // If ImGui wants to capture mouse input, let it handle the event
     if (ImGui::GetIO().WantCaptureMouse) return;
@@ -777,9 +842,9 @@ void App::update_debug_stats() {
 
 void App::update_camera(float delta_time) {
     // Movement parameters
-    const float max_speed = 3.0f;
-    const float acceleration = 8.0f;
-    const float deceleration = 12.0f;
+    const float max_speed = input.shift_pressed ? 1000.0f : 3.0f;
+    const float acceleration = input.shift_pressed ? 3000.0f : 8.0f;
+    const float deceleration = input.shift_pressed ? 3000.0f : 12.0f;
 
     // Calculate movement vectors based on camera yaw (horizontal rotation only)
     // Use Y as forward, X as right (more intuitive for FPS controls)
@@ -805,8 +870,36 @@ void App::update_camera(float delta_time) {
     if (delta_v > 1.0f) delta_v = 1.0f;
     camera.velocity += velocity_diff * delta_v;
 
-    // Apply velocity to position
-    camera.position += camera.velocity * delta_time;
+    const glm::vec3 d = camera.velocity * delta_time;
+    camera.frac += d;
+
+    auto pull_int = [](float& v) -> std::int64_t {
+        const double f = std::floor((double)v);
+        v = (float)(v - f);
+        return (std::int64_t)f;
+    };
+
+    const std::int64_t ix = pull_int(camera.frac.x);
+    const std::int64_t iy = pull_int(camera.frac.y);
+    const std::int64_t iz = pull_int(camera.frac.z);
+    if (ix || iy || iz) camera.abs += cube::math::UniversalCoord::from_meters(ix, iy, iz);
+
+    camera.local_position = camera.abs.to_relative(render_origin) + camera.frac;
+}
+
+void App::maybe_shift_origin() {
+    const float t = origin_shift_threshold_m;
+    if (glm::abs(camera.local_position.x) <= t &&
+        glm::abs(camera.local_position.y) <= t &&
+        glm::abs(camera.local_position.z) <= t) return;
+
+    const std::int64_t sx = (std::int64_t)std::floor((double)camera.local_position.x);
+    const std::int64_t sy = (std::int64_t)std::floor((double)camera.local_position.y);
+    const std::int64_t sz = (std::int64_t)std::floor((double)camera.local_position.z);
+    if (sx == 0 && sy == 0 && sz == 0) return;
+
+    render_origin += cube::math::UniversalCoord::from_meters(sx, sy, sz);
+    camera.local_position = camera.abs.to_relative(render_origin) + camera.frac;
 }
 
 void App::cleanup() {
@@ -950,7 +1043,9 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
         DebugData debug_data{
             fps,
             frame_time_ms,
-            camera.position,
+            camera.local_position,
+            render_origin,
+            glm::length(camera.local_position),
             ram_used,
             ram_total,
             vram_used,

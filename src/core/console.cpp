@@ -10,6 +10,7 @@ Console::Console()
     , should_focus_(false)
 {
     input_buffer_[0] = '\0';
+    output_buffer_.push_back('\0');
 }
 
 void Console::register_command(const std::string& name, const std::string& description, CommandCallback callback) {
@@ -84,6 +85,7 @@ void Console::add_log_message(const std::string& message, bool is_chat) {
     messages_.push_back({message, std::chrono::steady_clock::now(), is_chat});
     trim_messages();
     scroll_to_bottom_ = true;
+    output_dirty_ = true;
 }
 
 void Console::render(bool* show_console) {
@@ -148,15 +150,32 @@ void Console::render(bool* show_console) {
                           ImVec2(wp.x + w, wp.y + input_y + input_h), in_bg);
 
         if (has_output) {
-            ImGui::SetWindowFontScale(scale);
             ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
             ImGui::BeginChild("Output", ImVec2(0, output_h), false,
                               ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
-            for (const auto& msg : messages_) ImGui::TextUnformatted(msg.text.c_str());
-            if (scroll_to_bottom_) {
-                ImGui::SetScrollHereY(1.0f);
-                scroll_to_bottom_ = false;
+            ImGui::SetWindowFontScale(scale);
+            if (output_dirty_) {
+                size_t n = 1;
+                for (const auto& msg : messages_) n += msg.text.size() + 1;
+                output_buffer_.assign(n, '\0');
+                size_t at = 0;
+                for (const auto& msg : messages_) {
+                    std::memcpy(output_buffer_.data() + at, msg.text.data(), msg.text.size());
+                    at += msg.text.size();
+                    output_buffer_[at++] = '\n';
+                }
+                output_buffer_[at] = '\0';
+                output_dirty_ = false;
             }
+
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+            ImGui::InputTextMultiline("##output_text", output_buffer_.data(), output_buffer_.size(),
+                                      ImVec2(-1.0f, -1.0f),
+                                      ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopStyleVar(2);
+            ImGui::PopStyleColor(1);
             ImGui::EndChild();
             ImGui::PopStyleVar(1);
             ImGui::Dummy(ImVec2(0.0f, gap));
@@ -342,6 +361,7 @@ void Console::trim_messages() {
     if (messages_.size() > MAX_MESSAGES) {
         messages_.erase(messages_.begin(),
                        messages_.begin() + (messages_.size() - MAX_MESSAGES));
+        output_dirty_ = true;
     }
 }
 

@@ -8,12 +8,16 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <glm/glm.hpp>
 
+#include "math/math.hpp"
+
 class Console;
 
 struct DebugData {
     float fps;
     float frame_time_ms;
     glm::vec3 camera_position;
+    cube::math::UniversalCoord render_origin;
+    float distance_from_origin_m;
     size_t ram_used;
     size_t ram_total;
     size_t vram_used;

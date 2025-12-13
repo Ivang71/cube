@@ -223,7 +223,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 3.4.7 | ImGui log viewer | Logs show in UI |
 | 3.4.8 | Log level filtering | Can hide INFO |
 
-### 3.5 Tracy Integration
+### 3.5 Tracy Integration ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 3.5.1 | Add Tracy dependency | Links correctly |
@@ -238,7 +238,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 
 ## Stage 4: Math & Coordinates
 
-### 4.1 Math Library
+### 4.1 Math Library ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 4.1.1 | Use glm dependency | Links correctly |
@@ -250,7 +250,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 4.1.7 | Frustum struct and extraction | Tests pass |
 | 4.1.8 | Ray struct and ray-AABB test | Tests pass |
 
-### 4.2 Universal Coordinates
+### 4.2 Universal Coordinates ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 4.2.1 | Define UniversalCoord struct | Compiles |
@@ -265,7 +265,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 4.2.10 | Unit test at 10,000km | Precision verified |
 | 4.2.11 | Unit test at 1,000,000km | Precision verified |
 
-### 4.3 Floating Origin
+### 4.3 Floating Origin ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 4.3.1 | Store render origin (UniversalCoord) | Origin tracked |
@@ -277,7 +277,7 @@ Each step is atomic and verifiable. Do not proceed until verification passes.
 | 4.3.7 | Display origin in debug overlay | Shows current origin |
 | 4.3.8 | Display distance from origin | Shows meters |
 
-### 4.4 Camera-Relative Rendering
+### 4.4 Camera-Relative Rendering ✅
 | Step | Task | Verification |
 |------|------|--------------|
 | 4.4.1 | Camera always at (0,0,0) in shaders | Verified in shader |

@@ -21,6 +21,7 @@
 #include "render/imgui_layer.hpp"
 #include "console.hpp"
 #include "core/profile.hpp"
+#include "math/math.hpp"
 
 class App {
 public:
@@ -42,6 +43,7 @@ private:
     static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos);
     static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
     void update_camera(float delta_time);
+    void maybe_shift_origin();
     void update_debug_stats();
     float get_cpu_usage();
     float get_gpu_usage();
@@ -72,7 +74,9 @@ private:
 
     // Camera state
     struct Camera {
-        glm::vec3 position{0.0f, 0.0f, 2.0f};
+        cube::math::UniversalCoord abs{};
+        glm::vec3 frac{0.0f};
+        glm::vec3 local_position{0.0f, 0.0f, 2.0f};
         glm::vec3 velocity{0.0f, 0.0f, 0.0f};
         float yaw{0.0f};
         float pitch{-1.57079632679f}; // Look down at origin (-π/2)
@@ -82,12 +86,19 @@ private:
         bool mouse_captured{false};
     } camera;
 
+    cube::math::UniversalCoord render_origin{};
+    float origin_shift_threshold_m = 500.0f;
+
+    cube::math::UniversalCoord quad_abs{};
+    glm::vec3 quad_frac{0.0f};
+
     // Input state
     struct InputState {
         bool w_pressed{false};
         bool a_pressed{false};
         bool s_pressed{false};
         bool d_pressed{false};
+        bool shift_pressed{false};
         double last_mouse_x{0.0};
         double last_mouse_y{0.0};
         bool mouse_initialized{false};

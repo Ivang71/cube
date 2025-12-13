@@ -5,6 +5,7 @@
 #include <functional>
 #include <unordered_map>
 #include <chrono>
+#include <vector>
 
 class Console {
 public:
@@ -51,6 +52,8 @@ private:
     int history_index_;
     bool scroll_to_bottom_;
     bool should_focus_;
+    std::vector<char> output_buffer_;
+    bool output_dirty_{true};
 
     static constexpr size_t MAX_MESSAGES = 1000;
     static constexpr size_t MAX_COMMAND_HISTORY = 100;

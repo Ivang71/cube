@@ -20,6 +20,44 @@ int main() {
     using namespace cube::math;
 
     {
+        UniversalCoord a{1, 0, 0, -1, 0, 0};
+        UniversalCoord b{0, 0, 0, 2, 0, 0};
+        UniversalCoord c = a + b;
+        if (c.sx != 1 || c.mx != 1) return fail(11, "UniversalCoord add (1km-1m)+(2m)=(1km+1m)");
+    }
+
+    {
+        UniversalCoord a{0, 0, 0, 999, 0, 0};
+        UniversalCoord b{0, 0, 0, 100, 0, 0};
+        UniversalCoord c = a + b;
+        if (c.sx != 1 || c.mx != 99) return fail(12, "UniversalCoord overflow 999m+100m=1km+99m");
+    }
+
+    {
+        UniversalCoord a{0, 0, 0, 1, 0, 0};
+        UniversalCoord b{0, 0, 0, 100, 0, 0};
+        UniversalCoord c = a - b;
+        if (c.sx != -1 || c.mx != 901) return fail(13, "UniversalCoord underflow 1m-100m=-1km+901m");
+    }
+
+    {
+        const std::int64_t scales_km[] = {1, 100, 10000, 1000000};
+        for (std::int64_t s : scales_km) {
+            UniversalCoord base{s, 0, 0, 0, 0, 0};
+            UniversalCoord o1 = base + UniversalCoord{0, 0, 0, 1, 0, 0};
+            const double d = base.distance(o1);
+            if (std::fabs(d - 1.0) > 0.0) return fail(14, "UniversalCoord distance precision (base vs base+1m)");
+
+            const Vec3 rel = o1.to_relative(base);
+            if (!nearf(rel.x, 1.0f, 0.0f) || !nearf(rel.y, 0.0f, 0.0f) || !nearf(rel.z, 0.0f, 0.0f))
+                return fail(15, "UniversalCoord to_relative precision (base vs base+1m)");
+
+            UniversalCoord dcoord = (base + UniversalCoord{0, 0, 0, 2, 0, 0}) - o1;
+            if (dcoord.sx != 0 || dcoord.mx != 1) return fail(16, "UniversalCoord subtraction stays small for nearby");
+        }
+    }
+
+    {
         Mat4 t = glm::translate(Mat4(1.0f), Vec3(1.0f, 2.0f, 3.0f));
         Mat4 i(1.0f);
         if (!mat_near(mul(t, i), t)) return fail(1, "mat4 multiply (T*I)");
