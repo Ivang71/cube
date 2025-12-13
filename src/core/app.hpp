@@ -26,6 +26,7 @@
 #include "render/gpu_uploader.hpp"
 #include "console.hpp"
 #include "core/profile.hpp"
+#include "core/job_system.hpp"
 #include "math/math.hpp"
 #include "memory/linear_allocator.hpp"
 
@@ -154,6 +155,9 @@ private:
     cube::render::GpuUploader gpu_uploader;
 
     void* tracy_vk_ctx{};
+
+    cube::jobs::JobSystem jobs;
+    cube::jobs::JobSystem::Stats job_stats{};
 
     struct FrameArena {
         std::vector<std::byte> backing;

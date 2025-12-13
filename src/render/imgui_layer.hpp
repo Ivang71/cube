@@ -34,6 +34,12 @@ struct DebugData {
     std::uint64_t staging_capacity;
     float cpu_usage;
     float gpu_usage;
+    std::uint32_t job_worker_count;
+    std::uint32_t job_pending_high;
+    std::uint32_t job_pending_normal;
+    std::uint32_t job_pending_low;
+    std::uint32_t job_stall_warnings;
+    std::array<float, 64> job_worker_utilization;
     bool show_overlay;
     bool show_log_viewer;
 };

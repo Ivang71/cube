@@ -10,7 +10,7 @@ static VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceForma
 }
 
 static VkPresentModeKHR choose_present_mode(const std::vector<VkPresentModeKHR>& modes) {
-    for (const auto& m : modes) if (m == VK_PRESENT_MODE_MAILBOX_KHR) return m;
+    for (const auto& m : modes) if (m == VK_PRESENT_MODE_FIFO_KHR) return m;
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 

@@ -104,6 +104,8 @@ add_executable(cube
   src/core/log.cpp
   src/core/log.hpp
   src/core/profile.hpp
+  src/core/job_system.cpp
+  src/core/job_system.hpp
   src/core/tracy_new_delete.cpp
   src/memory/leak.cpp
   src/memory/leak.hpp
@@ -153,6 +155,9 @@ target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/src ${vma_SOURCE_DIR
 add_executable(cube_tests
   tests/math_tests.cpp
   tests/memory_tests.cpp
+  tests/job_tests.cpp
+  src/core/log.cpp
+  src/core/job_system.cpp
 )
 target_link_libraries(cube_tests PRIVATE glm::glm)
 target_include_directories(cube_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

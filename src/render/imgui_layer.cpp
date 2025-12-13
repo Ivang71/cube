@@ -320,6 +320,23 @@ void ImGuiLayer::render(VkCommandBuffer cmd, uint32_t image_index, VkExtent2D ex
             }
         }
         ImGui::End();
+
+        ImGui::SetNextWindowPos(ImVec2(display_size.x - 8.0f, 396.0f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(520, 260), ImGuiCond_Always);
+        if (ImGui::Begin("Jobs", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::Text("Workers: %u", debug_data.job_worker_count);
+            ImGui::Text("Pending: high=%u normal=%u low=%u",
+                debug_data.job_pending_high, debug_data.job_pending_normal, debug_data.job_pending_low);
+            ImGui::Text("Stall warnings: %u", debug_data.job_stall_warnings);
+            ImGui::Separator();
+            const std::uint32_t n = debug_data.job_worker_count > 64 ? 64u : debug_data.job_worker_count;
+            for (std::uint32_t i = 0; i < n; ++i) {
+                const float u = debug_data.job_worker_utilization[i];
+                ImGui::Text("W%u: %.1f%%", i, u);
+                ImGui::ProgressBar(u / 100.0f, ImVec2(-1.0f, 0.0f));
+            }
+        }
+        ImGui::End();
         ImGui::PopStyleColor(12);
     }
 

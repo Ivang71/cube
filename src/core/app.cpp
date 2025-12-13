@@ -313,6 +313,8 @@ bool App::init_vulkan() {
     quad_abs = camera.abs + cube::math::UniversalCoord::from_meters(0, 0, -1);
     quad_frac = glm::vec3(0.0f);
 
+    if (!jobs.init()) return false;
+
     return true;
 }
 
@@ -439,6 +441,10 @@ void App::main_loop() {
 
         {
             CUBE_PROFILE_SCOPE_N("events");
+            if (glfwGetWindowAttrib(window, GLFW_ICONIFIED) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {
+                glfwWaitEventsTimeout(0.05);
+                continue;
+            }
             glfwPollEvents();
         }
         if (framebuffer_resized) {
@@ -460,10 +466,12 @@ void App::main_loop() {
                 // Console opened - release mouse capture
                 camera.mouse_captured = false;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                input.mouse_initialized = false;
             } else {
                 // Console closed - recapture mouse
                 camera.mouse_captured = true;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                input.mouse_initialized = false;
             }
         }
 
@@ -623,6 +631,7 @@ void App::key_callback(GLFWwindow* window, int key, int scancode, int action, in
                     app->camera.mouse_captured = !app->camera.mouse_captured;
                     glfwSetInputMode(window, GLFW_CURSOR,
                         app->camera.mouse_captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+                    app->input.mouse_initialized = false;
                     break;
             }
         }
@@ -650,7 +659,11 @@ void App::cursor_pos_callback(GLFWwindow* window, double xpos, double ypos) {
         return;
     }
 
-    if (!app->camera.mouse_captured) return;
+    if (!app->camera.mouse_captured) {
+        app->input.last_mouse_x = xpos;
+        app->input.last_mouse_y = ypos;
+        return;
+    }
 
     double delta_x = xpos - app->input.last_mouse_x;
     double delta_y = ypos - app->input.last_mouse_y;
@@ -786,6 +799,8 @@ void App::update_debug_stats() {
         vram_used = (size_t)gpu_mem.vram_used();
         vram_total = (size_t)gpu_mem.vram_budget();
     }
+
+    job_stats = jobs.snapshot_stats();
 }
 
 void App::update_camera(float delta_time) {
@@ -917,6 +932,7 @@ void App::cleanup() {
     if (window) glfwDestroyWindow(window);
     glfwTerminate();
     LOG_INFO("Core", "Shutdown");
+    jobs.shutdown();
     for (auto& a : frame_arenas) a.alloc.reset();
     cube::mem::report_leaks();
     cube::log::shutdown();
@@ -1047,6 +1063,12 @@ bool App::record_command(VkCommandBuffer cmd, uint32_t imageIndex) {
             (std::uint64_t)gpu_uploader.staging_capacity(),
             cpu_usage,
             gpu_usage,
+            job_stats.worker_count,
+            job_stats.pending_high,
+            job_stats.pending_normal,
+            job_stats.pending_low,
+            job_stats.stall_warnings,
+            job_stats.worker_utilization,
             show_debug_overlay,
             show_log_viewer
         };
